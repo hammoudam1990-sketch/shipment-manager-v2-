@@ -1,0 +1,1859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box for Less — Shipment Manager v2 (multi-PO)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2b26; --paper:#f6f4ee; --panel:#ffffff; --line:#d8d3c4;
+    --accent:#3d6b52; --accent-dark:#274a38; --warn:#b5892a; --bad:#a3403a; --muted:#6f6a5c;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif;line-height:1.5;padding:32px 20px 80px;}
+  .wrap{max-width:1480px;margin:0 auto;}
+  header{margin-bottom:28px;border-bottom:2px solid var(--ink);padding-bottom:16px;}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--accent-dark);margin:0 0 6px;}
+  h1{font-size:28px;margin:0 0 6px;font-weight:400;}
+  .sub{color:var(--muted);font-size:14.5px;max-width:90ch;}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:20px 22px;margin-bottom:16px;}
+  .panel h2{font-size:15px;margin:0 0 4px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .panel p.hint{color:var(--muted);font-size:13px;margin:0 0 12px;}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1;}
+  .field.wide{flex:2 1 260px;}
+  .field.narrow{flex:0 0 130px;min-width:110px;}
+  label{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--muted);text-transform:uppercase;}
+  input[type=text],input[type=number],input,select{
+    font-family:Georgia,serif;font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:2px;background:#fff;color:var(--ink);width:100%;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--accent);}
+  input[readonly]{background:#f2f0e9;color:var(--muted);}
+  input[type=checkbox]{width:auto;}
+
+  button{font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;background:var(--accent-dark);color:#fff;border:none;border-radius:2px;padding:11px 18px;cursor:pointer;transition:background .15s ease;white-space:nowrap;}
+  button:hover:not(:disabled){background:var(--ink);}
+  button:disabled{background:#b9b4a4;cursor:not-allowed;}
+  button.secondary{background:#fff;color:var(--accent-dark);border:1px solid var(--accent-dark);}
+  button.secondary:hover:not(:disabled){background:#f1f6f2;}
+  button.danger{background:#fff;color:var(--bad);border:1px solid var(--bad);}
+  button.danger:hover{background:#fdf1f0;}
+
+  .dropzone{border:1.5px dashed var(--line);border-radius:2px;padding:14px;display:flex;align-items:center;gap:12px;cursor:pointer;background:#fbfaf6;}
+  .dropzone:hover{border-color:var(--accent);background:#f1f6f2;}
+  .dropzone input{display:none;}
+  .dz-icon{width:34px;height:34px;flex-shrink:0;border:1px solid var(--line);border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--panel);}
+  .dz-text{font-size:13.5px;}
+  .dz-text .fname{color:var(--accent-dark);font-weight:600;}
+  .dz-text .empty{color:var(--muted);}
+
+  .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:4px;}
+  .stat{border:1px solid var(--line);border-radius:2px;padding:12px 14px;background:#fbfaf6;cursor:pointer;transition:box-shadow .12s ease;}
+  .stat:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);}
+  .stat.active{border-color:var(--accent-dark);box-shadow:inset 0 0 0 2px var(--accent-dark);}
+  .stat .n{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent-dark);}
+  .stat .l{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .stat.alert{background:#fdf1f0;border-color:var(--bad);}
+  .stat.alert .n{color:var(--bad);}
+  .stat.review{background:#fdf7e8;border-color:var(--warn);}
+  .stat.review .n{color:var(--warn);}
+  .stat.all{background:#eef2f7;}
+  .stat.zero{opacity:.55;}
+
+  .banner{display:none;border-radius:2px;padding:14px 16px;margin-top:14px;}
+  .banner.show{display:block;}
+  .banner.bad{background:#fdf1f0;border:2px solid var(--bad);}
+  .banner.warn{background:#fdf7e8;border:2px solid var(--warn);}
+  .banner h3{margin:0 0 8px;font-size:14px;}
+  .banner.bad h3{color:var(--bad);} .banner.warn h3{color:var(--warn);}
+  .banner ul{margin:0;padding-left:18px;font-size:13.5px;max-height:220px;overflow-y:auto;}
+  .banner li{margin-bottom:4px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+  th{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.02em;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:2px solid var(--ink);position:sticky;top:0;background:var(--panel);z-index:1;}
+  td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tr:hover td{background:#fbfaf6;}
+  td.num{font-family:var(--mono);text-align:right;white-space:nowrap;}
+  td.bc{font-family:var(--mono);white-space:nowrap;}
+  td.small{font-size:11.5px;color:var(--muted);min-width:160px;}
+  .badge{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:2px;display:inline-block;}
+  .badge.ok{background:#c6efce;color:#274a38;}
+  .badge.bad{background:#ffc7ce;color:#a3403a;}
+  .badge.warn{background:#ffeb9c;color:#7a5a12;}
+  .badge.info{background:#e3e9f3;color:#34475f;}
+  .table-scroll{max-height:560px;overflow:auto;border:1px solid var(--line);}
+  .row-btn{font-family:var(--mono);font-size:11px;background:none;border:none;padding:2px 6px;cursor:pointer;display:block;}
+  .row-btn.del{color:var(--bad);} .row-btn.edit{color:var(--accent-dark);}
+  .dec{margin-bottom:6px;min-width:220px;}
+  .dec label{display:block;font-size:9.5px;margin-bottom:2px;}
+  .dec select,.dec input{font-size:12px;padding:4px 6px;}
+  .dec .uom-in{display:flex;gap:4px;align-items:center;}
+  .dec .uom-in input{width:70px;}
+  .dec .uom-in button{padding:5px 8px;font-size:11px;}
+  .filter-tag{display:inline-flex;align-items:center;gap:8px;background:var(--accent-dark);color:#fff;font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:2px;margin-bottom:8px;}
+  .filter-tag button{background:none;border:none;color:#fff;padding:0;font-size:14px;cursor:pointer;}
+  .edit-banner{display:none;background:#fdf7e8;border:1px solid var(--warn);padding:8px 12px;margin-bottom:10px;font-size:13px;}
+  .edit-banner.show{display:block;}
+
+  #log{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:pre-wrap;margin-top:10px;}
+  footer{margin-top:32px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;}
+  .small{font-size:11.5px;color:var(--muted);}
+  .filebtn{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border:1px solid var(--accent-dark);border-radius:2px;cursor:pointer;font-family:var(--mono);font-size:12.5px;color:var(--accent-dark);text-transform:none;letter-spacing:.02em;background:#fff;}
+  .po-tile .n{font-size:15px;}
+  .modal-back{display:none;position:fixed;inset:0;background:rgba(28,43,38,.45);z-index:50;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;}
+  .modal-back.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:20px 22px;max-width:760px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  .modal h3{margin:0 0 10px;font-size:16px;}
+  .modal ul ul{margin:2px 0 4px;}
+  footer p{margin:0 0 8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="kicker">BOX FOR LESS · WAREHOUSE OPS · v2 · MULTI-PO</p>
+    <h1>Shipment Manager v2</h1>
+    <p class="sub">One shipment, one or many Odoo Purchase Orders. Physical receiving is compared with the correct PO, converted into each product's <b>Odoo UOM</b> (Allowed Uom), and exported as one reconciliation workbook per PO plus a master shipment workbook. Only validated / resolved rows reach an Odoo Upload File. Quantities are never combined across POs. v1 stays untouched in <code>Shipment_Manager.html</code>.</p>
+  </header>
+
+  <div class="panel">
+    <h2>1 · Shipment &amp; Purchase Orders</h2>
+    <p class="hint">Load one Odoo export per PO (e.g. <code>P00343.xlsx</code>). The PO reference comes from the file name and can be corrected; the vendor is entered or chosen on import; <code>Stock Moves/Reference</code> (e.g. BFL/IN/00067) is kept as the <b>receipt reference</b>, never as the PO number. A file with an explicit PO / Source Document column is split by that column. Loading a PO that is already loaded starts a re-import preview.</p>
+    <div class="row">
+      <div class="field wide">
+        <label>Shipment reference</label>
+        <input type="text" id="shipmentName" placeholder="e.g. Lebanon — October 2026">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <label style="flex-basis:100%;">Purchase order files (one or several)</label>
+      <label class="dropzone" id="dzPO" style="flex:1;">
+        <input type="file" id="filePO" accept=".xlsx,.xls" multiple>
+        <span class="dz-icon">XLS</span>
+        <span class="dz-text" id="dzPOText"><span class="empty">Click to choose PO file(s), or drag them here</span></span>
+      </label>
+    </div>
+    <div id="poStatus" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
+    <div class="table-scroll" style="max-height:300px;margin-top:10px;">
+      <table id="poTable">
+        <thead><tr><th>PO ref</th><th>Vendor</th><th>Receipt ref</th><th>File</th><th>Lines</th><th>Ordered (PCS)</th><th>Rows</th><th>Status</th><th></th></tr></thead>
+        <tbody id="poTbody"></tbody>
+      </table>
+    </div>
+    <div class="banner warn" id="poIssueBanner"><h3>⚠ PO data notes</h3><ul id="poIssueList"></ul></div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · UOM definitions</h2>
+    <p class="hint">Built-in: <b>CTN&lt;n&gt;</b> = n PCS (Odoo and physical), <b>PCS</b> = 1 (exact text only), <b>Pack of &lt;n&gt;</b> = n PCS (physical only). Anything else — bare CTN, Tray, 6X4, By&nbsp;24, CTNP… — is <b>UOM NEEDS REVIEW</b> until an approved definition is added here. Approved definitions are kept in this browser across shipments (export them to move to another computer). A temporary conversion typed on a single row never becomes a definition by itself.</p>
+    <div class="table-scroll" style="max-height:260px;">
+      <table id="uomTable">
+        <thead><tr><th>Type</th><th>UOM</th><th>PCS per unit</th><th>Side</th><th>Approved by</th><th>Approved on</th><th>Note</th><th></th></tr></thead>
+        <tbody id="uomTbody"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:10px;" id="uomForm">
+      <div class="field narrow"><label>UOM text</label><input type="text" id="uomLabel" placeholder="e.g. By 24"></div>
+      <div class="field narrow"><label>PCS per unit</label><input type="number" id="uomPcs" step="any" min="0"></div>
+      <div class="field narrow"><label>Side</label><select id="uomSide"><option value="">— choose —</option><option value="both">Odoo and physical</option><option value="odoo">Odoo only</option><option value="physical">Physical only</option></select></div>
+      <div class="field narrow"><label>Approved by</label><input type="text" id="uomBy"></div>
+      <div class="field"><label>Note</label><input type="text" id="uomNote"></div>
+      <button id="uomAddBtn">Save approved definition</button>
+    </div>
+    <div id="uomMsg" style="margin-top:6px;font-size:13px;color:var(--bad);"></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="secondary" id="uomExportBtn">Export definitions (.json)</button>
+      <label class="secondary filebtn">Import definitions (.json)<input type="file" id="uomImportInput" accept=".json" style="display:none;"></label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>3 · Live dashboard</h2>
+    <p class="hint">PO tiles show each PO's overall status — click one to filter everything below to that PO. Status cards filter the reconciliation table.</p>
+    <div class="dash-grid" id="poTiles"></div>
+    <div class="dash-grid" id="dashGrid" style="margin-top:10px;"></div>
+    <div class="banner bad" id="notFoundBanner">
+      <h3>⚠ Not on any loaded PO — check in Odoo before shelving</h3>
+      <ul id="notFoundList"></ul>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>4 · Check in an item</h2>
+    <p class="hint">Choose the PO when the paperwork tells you which PO the goods belong to; leave <b>Auto</b> otherwise — the tool links the row automatically only when exactly one loaded PO contains the product, and asks you when several do.</p>
+    <div class="edit-banner" id="editBanner">Editing row <b id="editNo"></b> — decisions on this row will be reset. <button class="secondary" id="cancelEditBtn" style="padding:4px 10px;margin-left:8px;">Cancel edit</button></div>
+    <div class="row">
+      <div class="field" style="flex:1 1 220px;">
+        <label>Receiving against PO</label>
+        <select id="qaPo"><option value="">Auto (determine PO)</option></select>
+      </div>
+      <div class="field wide">
+        <label>Product name</label>
+        <input type="text" id="qaItem" list="poNames" placeholder="Start typing...">
+        <datalist id="poNames"></datalist>
+      </div>
+      <div class="field" style="flex:1 1 260px;">
+        <label>Preview</label>
+        <span class="badge" id="qaStatusBadge" style="align-self:flex-start;margin-top:8px;">—</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field"><label>Physical barcode (scanned)</label><input type="text" id="qaPhysBC"></div>
+      <div class="field narrow"><label>Physical qty</label><input type="number" id="qaPhysQty" step="any"></div>
+      <div class="field narrow"><label>Physical UOM</label><input type="text" id="qaPhysUom" placeholder="blank = PO UOM"></div>
+      <div class="field narrow"><label>Pieces / phys. unit</label><input type="number" id="qaPhysPieces" step="any" placeholder="optional"></div>
+      <div class="field narrow"><label>Weight / spec</label><input type="text" id="qaPhysSpec" placeholder="e.g. 750g"></div>
+      <div class="field narrow"><label>Expiry date</label><input type="text" id="qaExpiry" placeholder="DD/MM/YYYY"></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <div class="field narrow"><label>PO (auto)</label><input type="text" id="qaPoRef" readonly></div>
+      <div class="field narrow"><label>PO barcode (auto)</label><input type="text" id="qaPoBC" readonly></div>
+      <div class="field narrow"><label>PO qty (auto)</label><input type="text" id="qaPoQty" readonly></div>
+      <div class="field narrow"><label>Odoo UOM (auto)</label><input type="text" id="qaPoUom" readonly></div>
+      <div class="field wide"><label>Notes</label><input type="text" id="qaNotes"></div>
+      <button id="addItemBtn">Add item</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>5 · Bulk import (optional)</h2>
+    <p class="hint">Header names are detected (Product, Physical Barcode, Physical Qty, Expiry, Notes, Physical UOM, Pieces per pack, Weight/Spec, and an optional <b>PO</b> column). A PO value matching a loaded PO links the row to it; an unknown PO value sends the row to PO SELECTION REQUIRED. Without recognisable headers the v1 order is used. Safe to re-import a growing file; already-checked-in rows are skipped.</p>
+    <label class="dropzone" id="dzImport">
+      <input type="file" id="fileImport" accept=".xlsx,.xls">
+      <span class="dz-icon">XLS</span>
+      <span class="dz-text" id="dzImportText"><span class="empty">Click to choose your shipment file, or drag it here</span></span>
+    </label>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel">
+    <h2>6 · Reconciliation — items checked in (<span id="itemCount">0</span>)</h2>
+    <p class="hint">Each row shows its PO, how it was matched, the UOM conversion (with PCS), the classification, why, what to do, and the review decision. Only fully reviewed rows enter their PO's Odoo Upload File.</p>
+    <div class="row" style="margin-bottom:8px;">
+      <div class="field" style="flex:0 1 260px;"><label>PO filter</label><select id="poFilter"><option value="">All POs</option></select></div>
+      <div id="filterTagWrap" style="align-self:flex-end;"></div>
+    </div>
+    <div class="table-scroll">
+      <table id="itemsTable">
+        <thead><tr>
+          <th>#</th><th>PO</th><th>Product</th><th>Matched via</th><th>PO barcode</th><th>Physical barcode</th>
+          <th>PO UOM</th><th>Physical UOM</th><th>PO qty</th><th>Physical qty</th><th>Conv. factor</th><th>Odoo qty</th>
+          <th>Expiry</th><th>Status</th><th>Reason</th><th>Required action</th><th>Review</th><th></th>
+        </tr></thead>
+        <tbody id="itemsTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>7 · Session &amp; export</h2>
+    <p class="hint">The session (POs, rows, decisions) autosaves to this browser under a v3 key — v1 and single-PO v2 sessions are never overwritten. Older session backups (.json) can be loaded and are migrated. Clearing the session keeps the approved UOM definitions.</p>
+    <div class="row">
+      <button class="secondary" id="saveSessionBtn">Download session backup (.json)</button>
+      <label class="secondary filebtn">Load session backup<input type="file" id="loadSessionInput" accept=".json" style="display:none;"></label>
+      <button class="danger" id="clearSessionBtn">Clear session — start new shipment</button>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button id="exportZipBtn" style="font-size:14px;padding:14px 24px;">Download all workbooks (.zip)</button>
+      <button class="secondary" id="exportMasterBtn">Master shipment workbook</button>
+    </div>
+    <div class="row" style="margin-top:10px;" id="poExportBtns"></div>
+    <div id="exportStatus" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
+  </div>
+
+  <footer>
+    <p><b>Receiving cases</b> (per PO; quantities compared in the Odoo UOM, summed per PO line or identical-line group): 1 same barcode + same qty → <b>READY</b> (only if UOM and weight/spec agree) · 2 same barcode + different qty → <b>QUANTITY MISMATCH</b> · 3 different barcode + same qty → <b>ADDITIONAL BARCODE</b> if the PO barcode is formal, otherwise <b>NEW PRODUCT / EXCHANGE BARCODE REVIEW</b> · 4 different barcode + different qty → the same <b>+ QUANTITY DIFFERENCE REVIEW</b> · 5 ordered, nothing received → <b>MISSING</b> · 6 received, not ordered → <b>EXTRA / NOT ON PO</b>.</p>
+    <p><b>Formal barcode</b> = exactly 13 numeric digits, evaluated on the <b>PO / Odoo</b> barcode.</p>
+    <p><b>Multiple POs</b> — a row belongs to exactly one PO. Product on several POs and no PO chosen → <b>PO SELECTION REQUIRED</b>; chosen PO lacks the product but another PO has it → <b>PO MISMATCH — NEEDS REVIEW</b>. Use <b>Split row</b> when one physical receipt covers several POs; the tool never allocates quantities by itself. Identical duplicate lines inside one PO (same barcode, internal ref, name, UOM, pieces, weight) are received as one group; their original lines stay listed.</p>
+    <p><b>Odoo quantity</b> = physical qty × pieces per physical unit ÷ pieces per Odoo unit (via PCS). Undefined UOMs → <b>UOM CONVERSION — NEEDS REVIEW</b>; the tool never guesses a conversion and never uses "* 10" from a product description.</p>
+  </footer>
+
+</div>
+
+<div class="modal-back" id="modalBack"><div class="modal" id="modal"></div></div>
+
+<script id="engine">
+/* ShipmentEngine — pure logic (no DOM). Tested by v2_tests/run_tests.js. */
+var ShipmentEngine = (function(){
+'use strict';
+
+// ---------- text helpers ----------
+function norm(v){ if(v===null||v===undefined) return ''; return String(v).trim().replace(/\s+/g,' ').toUpperCase(); }
+function normBC(v){
+  if(v===null||v===undefined) return '';
+  if(typeof v==='number'){ if(!isFinite(v)) return ''; return Number.isInteger(v) ? v.toFixed(0) : String(v); }
+  let s=String(v).trim();
+  if(/^\d+\.0+$/.test(s)) s=s.replace(/\.0+$/,'');
+  return s.toUpperCase();
+}
+function stripBrackets(name){ return String(name||'').replace(/\s*\[[^\]]*\]\s*$/, '').trim(); }
+const STOP = new Set(['CONSERVE','FIELD','FIELDS','GARDEN','GARDENS','THE','AND','WITH','IN','OF','A']);
+function tokenize(name){ const s=String(name||'').toUpperCase().replace(/[()]/g,' '); return s.match(/[A-Z0-9.]+/g)||[]; }
+function splitTokens(tokens){ const numtoks=new Set(),wordtoks=new Set(); for(const t of tokens){ if(/[0-9]/.test(t)) numtoks.add(t); else if(!STOP.has(t)) wordtoks.add(t);} return {numtoks,wordtoks}; }
+function setEq(a,b){ if(a.size!==b.size) return false; for(const x of a) if(!b.has(x)) return false; return true; }
+function jaccard(a,b){ const u=new Set([...a,...b]); if(u.size===0) return 0; let i=0; for(const x of a) if(b.has(x)) i++; return i/u.size; }
+function bigrams(s){ const o=[]; for(let i=0;i<s.length-1;i++) o.push(s.substr(i,2)); return o; }
+function diceSim(a,b){ if(a===b) return 1; const A=bigrams(a),B=bigrams(b); if(!A.length||!B.length) return 0; const m={}; for(const g of B) m[g]=(m[g]||0)+1; let mt=0; for(const g of A){ if(m[g]>0){mt++;m[g]--;} } return 2*mt/(A.length+B.length); }
+function toNum(v){ if(v===null||v===undefined||v==='') return null; if(typeof v==='number') return isFinite(v)?v:null; const s=String(v).trim().replace(',', '.'); if(!/^-?\d+(\.\d+)?$/.test(s)) return null; return parseFloat(s); }
+function toPos(v){ const n=toNum(v); return (n!==null && n>0) ? n : null; }
+function round6(x){ return Math.round(x*1e6)/1e6; }
+function qtyEq(a,b){ return a!==null && b!==null && Math.abs(a-b) < 1e-9; }
+function fmtDate(v){ if(v instanceof Date && !isNaN(v)){ const dd=String(v.getDate()).padStart(2,'0'),mm=String(v.getMonth()+1).padStart(2,'0'); return dd+'/'+mm+'/'+v.getFullYear(); } return v===null||v===undefined?'':v; }
+
+// ---------- barcode rules ----------
+// Formal = exactly 13 numeric digits (final business rule #6, 2026-09-30). Everything else is non-formal.
+function isFormalBarcode(v){ return /^\d{13}$/.test(normBC(v)); }
+function barcodeQuality(v){
+  if(typeof v==='number' && !Number.isInteger(v)) return {q:'malformed', note:'Barcode stored as a decimal number ('+v+') — digits were lost'};
+  const raw = (v===null||v===undefined) ? '' : String(v).trim();
+  if(raw==='') return {q:'blank', note:'No physical barcode was captured'};
+  if(/^\d+([.,]\d+)?E[+-]?\d+$/i.test(raw)) return {q:'malformed', note:'Barcode is in scientific notation ('+raw+') — digits were lost by Excel'};
+  const s=normBC(v);
+  if(!/^[A-Z0-9]+$/.test(s)) return {q:'malformed', note:'Barcode contains spaces or symbols ("'+raw+'")'};
+  return {q:'ok', formal:isFormalBarcode(s)};
+}
+
+// ---------- UOM ----------
+function uomKey(s){ return String(s||'').toUpperCase().replace(/[\s\-_.]/g,''); }
+// Confirmed UOM rules (2026-10-01). Anything not covered here or by an APPROVED definition is unknown → NEEDS REVIEW.
+// CTNP is deliberately NOT defined. Product-description text such as "* 10" is never a conversion source.
+const BUILTIN_UOM_RULES = [
+  {id:'CTN',     label:'CTN<n> = n PCS (e.g. CTN10 = 10 PCS)', side:'both'},
+  {id:'PCS',     label:'PCS = 1 PCS (exact text "PCS" only)',  side:'both'},
+  {id:'PACK_OF', label:'Pack of <n> = n PCS',                  side:'physical'},
+];
+function normUomText(s){ return String(s??'').toUpperCase().replace(/\s+/g,' ').trim(); }
+// side: 'odoo' | 'physical'. defs: approved permanent definitions [{key,label,pcsPerUnit,side}].
+// Returns {pcs, source, defKey?} or null when the UOM is not explicitly defined.
+function resolveUom(text, side, defs){
+  const t=normUomText(text);
+  if(!t) return null;
+  let m=t.match(/^CTN\s*(\d+)$/);
+  if(m && +m[1]>0) return {pcs:+m[1], source:'built-in CTN<n>'};
+  if(t==='PCS') return {pcs:1, source:'built-in PCS'};
+  if(side==='physical'){ m=t.match(/^PACK OF\s*(\d+)$/); if(m && +m[1]>0) return {pcs:+m[1], source:'built-in Pack of <n> (physical)'}; }
+  const k=uomKey(t);
+  for(const d of (defs||[])){
+    if(uomKey(d.label)===k && (d.side==='both'||d.side===side) && toPos(d.pcsPerUnit)!==null)
+      return {pcs:toPos(d.pcsPerUnit), source:'approved definition "'+d.label+'" = '+d.pcsPerUnit+' PCS', defKey:d.key};
+  }
+  return null;
+}
+// Validate a proposed permanent definition. Built-in patterns cannot be redefined.
+function validateUomDefinition(def, defs){
+  const errs=[]; const label=normUomText(def&&def.label);
+  if(!label) errs.push('UOM text is required');
+  if(toPos(def&&def.pcsPerUnit)===null) errs.push('PCS per unit must be a number greater than 0');
+  if(!['odoo','physical','both'].includes(def&&def.side)) errs.push('Side must be odoo, physical or both');
+  if(!String(def&&def.approvedBy||'').trim()) errs.push('Approved by is required');
+  if(label && (/^CTN\s*\d+$/.test(label) || label==='PCS')) errs.push('"'+label+'" is already covered by a built-in rule');
+  // Pack of <n> is built-in on the PHYSICAL side only; it may be approved as an Odoo UOM explicitly.
+  if(label && /^PACK OF\s*\d+$/.test(label) && def.side!=='odoo') errs.push('"'+label+'" is already built-in for physical receiving — define it with side "odoo" only');
+  if(label && (defs||[]).some(d=>uomKey(d.label)===uomKey(label))) errs.push('"'+label+'" is already defined');
+  return errs;
+}
+
+// ---------- weight / volume spec ----------
+function specTokens(s){
+  const out=new Set(); if(!s) return out;
+  const t=String(s).toUpperCase();
+  const re=/(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(KGS?|KILOS?|GRAMS?|GMS?|GRS?|G|MLS?|LTRS?|LITRES?|LITERS?|LT|L|CL)(?![A-Z])/g;
+  let m;
+  while((m=re.exec(t))){
+    let v=parseFloat(m[1].replace(',','.')); const u=m[2]; let dim;
+    if(/^K/.test(u)){ v*=1000; dim='g'; }
+    else if(/^G/.test(u)){ dim='g'; }
+    else if(/^ML/.test(u)){ dim='ml'; }
+    else if(u==='CL'){ v*=10; dim='ml'; }
+    else { v*=1000; dim='ml'; }
+    out.add(dim+':'+round6(v));
+  }
+  return out;
+}
+function fmtSpec(set){ return [...set].map(k=>{ const [d,v]=k.split(':'); return v+(d==='g'?'g':'ml'); }).join(', '); }
+function specCheck(it, line){
+  const explicit=String(it.physicalSpec||'').trim();
+  const poT=specTokens(line.item);
+  const phT=specTokens(explicit || it.item);
+  const r={mismatch:false, note:''};
+  if(explicit && phT.size===0){ r.note='Recorded spec "'+explicit+'" is not a readable weight/volume — not compared'; return r; }
+  if(phT.size && !poT.size){ if(explicit) r.note='PO description has no weight/volume to compare against'; return r; }
+  if(phT.size && poT.size){
+    const extra=[...phT].filter(x=>!poT.has(x));
+    if(extra.length){ r.mismatch=true; r.note='PO says '+fmtSpec(poT)+', physical '+(explicit?'recorded spec':'description')+' says '+fmtSpec(phT); }
+  }
+  return r;
+}
+
+// ---------- PO parsing ----------
+function findHeaderRow(aoa, mustA, mustB){
+  for(let r=0;r<Math.min(aoa.length,10);r++){
+    const cells=(aoa[r]||[]).map(c=>String(c===null||c===undefined?'':c).trim());
+    if(cells.some(c=>mustA.test(c)) && cells.some(c=>mustB.test(c))) return r;
+  }
+  return -1;
+}
+function mapColumns(header, spec){
+  const cells=header.map(c=>String(c===null||c===undefined?'':c).trim());
+  const used=new Set(), map={};
+  for(const [field, re, not] of spec){
+    for(let c=0;c<cells.length;c++){
+      if(used.has(c) || !cells[c]) continue;
+      if(re.test(cells[c]) && !(not && not.test(cells[c]))){ map[field]=c; used.add(c); break; }
+    }
+  }
+  return map;
+}
+const PO_SPEC = [
+  ['pieces', /pieces?\s*(per|\/)|pcs\s*(per|\/)|units?\s*per|per\s*unit|factor|ratio/i],
+  ['barcode', /bar\s*-?\s*code/i, /physical|scanned|received/i],
+  ['poRef', /source\s*doc|purchase\s*order|order\s*ref|^po$|\bpo\s*(ref|reference|number|no\.?)\b/i, /bar\s*code|qty|quantity|product|item/i],
+  ['vendor', /vendor|supplier|partner/i],
+  ['receiptRef', /reference|receipt/i, /order|internal|source|purchase/i],
+  ['item', /item|product|description|name/i],
+  ['uom', /allowed\s*uom|odoo\s*uom|\buom\b|unit\s*of\s*measure|u\.o\.m/i],
+  ['pack', /pa?ck\s*size|pck|^pack/i],
+  ['qty', /^ctn$|qty|quantity|ordered|^ctns?\b/i, /pieces|physical|received|^pq$/i],
+];
+function extractInternalRef(name){ const m=String(name||'').match(/\[([^\]]+)\]\s*$/); return m?m[1].trim():null; }
+function fileStem(name){ return String(name||'').replace(/^.*[\\\/]/,'').replace(/\.[^.]+$/,'').trim(); }
+function sanitizeFileName(s){ return String(s??'').replace(/[\/:\\*?\[\]"<>|]/g,'-').replace(/\s+/g,' ').trim() || 'unnamed'; }
+function parsePoAoa(aoa){
+  const h=findHeaderRow(aoa, /bar\s*-?\s*code/i, /item|product|description|name/i);
+  let map, start, mode;
+  if(h>=0){ map=mapColumns(aoa[h], PO_SPEC); start=h+1; mode='header row '+(h+1); }
+  else { map={barcode:0,item:1,pack:2,qty:3}; start=1; mode='v1 column order (no header detected)'; }
+  const get=(row,f)=> map[f]===undefined ? null : (row[map[f]]===undefined?null:row[map[f]]);
+  const lines=[];
+  for(let r=start;r<aoa.length;r++){
+    const row=aoa[r]||[];
+    const item=get(row,'item');
+    if(item===null||String(item).trim()==='') continue;
+    const uomText = String(get(row,'uom') ?? '').trim() || String(get(row,'pack') ?? '').trim();
+    const explicitPieces=toPos(get(row,'pieces'));
+    // pieces per Odoo unit are resolved at evaluation time (odooUnit) so approved definitions apply live
+    const s=v=>v===null||v===undefined?'':String(v).trim();
+    lines.push({ id:'L'+(lines.length+1), row:r+1, barcode:get(row,'barcode'), item:String(item).trim(), internalRef:extractInternalRef(item),
+      uom:uomText, qty:get(row,'qty'), explicitPieces, receiptRef:s(get(row,'receiptRef'))||null,
+      poRefCol:s(get(row,'poRef'))||null, vendorCol:s(get(row,'vendor'))||null });
+  }
+  return {lines, mode, map, hasPoColumn:map.poRef!==undefined, hasVendorColumn:map.vendor!==undefined};
+}
+
+// One file = one PO, unless the file carries an explicit PO column (then split by it).
+// PO ref default = filename stem (current process); the Stock Moves/Reference value is a RECEIPT ref, never the PO ref.
+function buildPoDrafts(parsed, fileName){
+  const stem=fileStem(fileName);
+  const groups=new Map();
+  for(const l of parsed.lines){ const k=parsed.hasPoColumn ? (l.poRefCol||'') : ''; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(l); }
+  const distinctCol=[...groups.keys()].filter(Boolean);
+  const drafts=[];
+  for(const [k,lines] of groups){
+    const vendors=[...new Set(lines.map(l=>l.vendorCol).filter(Boolean))];
+    const receiptRefs=[...new Set(lines.map(l=>l.receiptRef).filter(Boolean))];
+    const d={ fileName, ref:k||stem, refSource:k?'column':'filename', conflict:null,
+      vendor:vendors.length===1?vendors[0]:'', vendorSource:vendors.length===1?'column':'', vendorOptionsInFile:vendors,
+      receiptRefs, lines, notes:[] };
+    if(k && distinctCol.length===1 && stem && norm(k)!==norm(stem)) d.conflict={column:k, filename:stem};
+    if(!k && parsed.hasPoColumn) d.notes.push(lines.length+' line(s) have a blank PO column — PO ref taken from the filename; please confirm');
+    if(receiptRefs.length>1) d.notes.push('This PO has '+receiptRefs.length+' receipt references ('+receiptRefs.join(', ')+') — all kept; still one PO');
+    if(vendors.length>1) d.notes.push('Several vendor values in the file: '+vendors.join(', ')+' — choose one');
+    drafts.push(d);
+  }
+  return drafts;
+}
+function findPoByRef(state, ref){ const k=norm(ref); return (state.pos||[]).find(p=>norm(p.ref)===k)||null; }
+// Adds a confirmed PO to the shipment. Returns {po} or {errors}.
+function addPo(state, draft, opts){
+  const ref=String(opts&&opts.ref!==undefined?opts.ref:draft.ref).trim(), vendor=String(opts&&opts.vendor!==undefined?opts.vendor:draft.vendor).trim();
+  const errors=[];
+  if(!ref) errors.push('PO reference is required');
+  if(!vendor) errors.push('Vendor is required');
+  if(ref && findPoByRef(state, ref)) errors.push('PO '+ref+' is already loaded — use Re-import to replace it');
+  if(errors.length) return {errors};
+  state.pos=state.pos||[];
+  state.poSeq=(state.poSeq||0)+1;
+  const poId='PO'+state.poSeq;
+  const refSource = (opts&&opts.ref!==undefined && String(opts.ref).trim()!==draft.ref) ? 'edited' : draft.refSource;
+  const po={ poId, ref, refSource, vendor, fileName:draft.fileName||'', importedAt:new Date().toISOString(), version:1,
+    receiptRefs:draft.receiptRefs||[], history:[], lines:draft.lines.map((l,i)=>({...l, id:poId+'-L'+(i+1), poId})) };
+  state.pos.push(po);
+  return {po};
+}
+function resolvePoRef(state, text){ const p=findPoByRef(state, text); return p?p.poId:null; }
+
+// ---------- physical import parsing ----------
+const IMPORT_SPEC = [
+  ['poRef', /source\s*doc|purchase\s*order|order\s*ref|^po$|\bpo\s*(ref|reference|number|no\.?)\b/i, /bar\s*code|qty|quantity|product|item|uom/i],
+  ['physicalPieces', /pieces?\s*(per|\/)|pcs\s*(per|\/)|units?\s*per|per\s*pack/i],
+  ['physicalBC', /bar\s*-?\s*code/i, /odoo|\bpo\b/i],
+  ['item', /product|item|name|description/i, /odoo|\bpo\b/i],
+  ['physicalQty', /qty|quantity|count|^pq$|^ctns?$/i, /\bpo\b|odoo|ordered/i],
+  ['expiry', /expir|^exp\b|best\s*before|bbd/i],
+  ['notes', /note|remark|comment/i],
+  ['physicalUom', /uom|unit|pack|pck/i],
+  ['physicalSpec', /weight|spec|gram|size/i],
+];
+function parseImportAoa(aoa){
+  const h=findHeaderRow(aoa, /bar\s*-?\s*code/i, /product|item|name|description/i);
+  let map, start, mode;
+  if(h>=0){ map=mapColumns(aoa[h], IMPORT_SPEC); start=h+1; mode='header row '+(h+1); }
+  else { map={item:0,physicalBC:1,physicalQty:2,expiry:3,notes:4,physicalUom:5,physicalPieces:6,physicalSpec:7}; start=1; mode='v1 column order'; }
+  const get=(row,f)=> map[f]===undefined ? null : (row[map[f]]===undefined||row[map[f]]===''?null:row[map[f]]);
+  const recs=[];
+  for(let r=start;r<aoa.length;r++){
+    const row=aoa[r]||[];
+    const item=get(row,'item');
+    if(item===null||String(item).trim()==='') continue;
+    recs.push({ item:String(item).trim(), physicalBC:get(row,'physicalBC'), physicalQty:get(row,'physicalQty'), expiry:fmtDate(get(row,'expiry')),
+      notes:get(row,'notes'), physicalUom:get(row,'physicalUom'), physicalPieces:get(row,'physicalPieces'), physicalSpec:get(row,'physicalSpec'),
+      poRef:get(row,'poRef')===null?null:String(get(row,'poRef')).trim() });
+  }
+  return {recs, mode, map};
+}
+function rowKey(rec){ return [norm(rec.item), normBC(rec.physicalBC), String(rec.expiry||''), String(rec.physicalQty??''), norm(rec.physicalUom), norm(rec.physicalSpec), norm(rec.poRef||rec.poId||'')].join('|'); }
+
+// ---------- shipment model: legacy single-PO states are wrapped as one PO (read-only view) ----------
+function shipmentView(state){
+  let pos=state.pos;
+  if(!pos || !pos.length){
+    if(state.poLines && state.poLines.length){
+      pos=[{ poId:'PO1', ref:state.poRef||fileStem(state.poFileName)||'PO', refSource:'legacy', vendor:state.vendor||'', fileName:state.poFileName||'', receiptRefs:[],
+             lines:state.poLines.map(l=>({...l, poId:'PO1', internalRef:l.internalRef??extractInternalRef(l.item)})) }];
+    } else pos=[];
+  }
+  return { pos, items:(state.items||[]).map(it=>({...it, manualTargetId: it.manualTargetId ?? it.manualLineId ?? null,
+    tempPhysPieces: it.tempPhysPieces ?? it.manualPhysPieces ?? null, tempPoPieces: it.tempPoPieces ?? it.manualPoPieces ?? null})) };
+}
+
+// ---------- identical duplicate PO lines (within ONE PO only) ----------
+// Identical = same barcode, internal ref (or both none), product name, Allowed Uom, pieces per unit, weight/volume.
+function lineIdentityKey(l, defs){
+  const bc=normBC(l.barcode); if(!bc) return null; // lines without a barcode are never grouped
+  const ou=odooUnit(l, defs);
+  return [bc, norm(l.internalRef||''), norm(stripBrackets(l.item)), uomKey(l.uom), ou?String(ou.pcs):'', [...specTokens(l.item)].sort().join(',')].join('|');
+}
+function buildTargets(po, defs){
+  const byKey=new Map(), targets=[];
+  for(const l of po.lines){
+    const k=lineIdentityKey(l, defs);
+    if(k && byKey.has(k)){ byKey.get(k).lines.push(l); continue; }
+    const t={ id:l.id, poId:po.poId, poRef:po.ref, barcode:l.barcode, item:l.item, internalRef:l.internalRef||null, uom:l.uom, explicitPieces:l.explicitPieces, lines:[l] };
+    targets.push(t); if(k) byKey.set(k,t);
+  }
+  for(const t of targets){
+    if(t.lines.length>1) t.id='G:'+t.lines[0].id;
+    t.isGroup=t.lines.length>1;
+    const qs=t.lines.map(l=>toNum(l.qty));
+    t.qty = qs.some(q=>q===null) ? null : round6(qs.reduce((a,b)=>a+b,0));
+    t.receiptRefs=[...new Set(t.lines.map(l=>l.receiptRef).filter(Boolean))];
+  }
+  return targets;
+}
+
+// ---------- PO index & matching ----------
+function buildPoIndex(lines){
+  const byBarcode=new Map(), byName=new Map(), byStripped=new Map(), tokenList=[], byId=new Map();
+  const push=(m,k,l)=>{ if(!k) return; if(!m.has(k)) m.set(k,[]); m.get(k).push(l); };
+  for(const l of lines){
+    byId.set(l.id,l);
+    if(l.lines) for(const m of l.lines) byId.set(m.id,l);
+    push(byBarcode, normBC(l.barcode), l);
+    push(byName, norm(l.item), l);
+    const st=norm(stripBrackets(l.item));
+    push(byStripped, st, l);
+    const {numtoks,wordtoks}=splitTokens(tokenize(stripBrackets(l.item)));
+    tokenList.push({numtoks,wordtoks,key:st,line:l});
+  }
+  const dupBarcodes=[...byBarcode].filter(([,v])=>v.length>1);
+  return {byBarcode,byName,byStripped,tokenList,byId,dupBarcodes,lines};
+}
+function lineLabel(l){ return (l.poRef?'['+l.poRef+'] ':'')+l.item+' — '+(normBC(l.barcode)||'no barcode')+' — '+(l.uom||'?')+' × '+(l.qty??'?')+(l.isGroup?' (identical group of '+l.lines.length+' lines)':''); }
+
+function matchToPO(rec, idx){
+  if(!idx) return {line:null, confidence:'none', via:'No PO loaded', candidates:[]};
+  if(rec.manualNotOnPo) return {line:null, confidence:'confirmed-none', via:'User confirmed: not on PO', candidates:[]};
+  const mt=rec.manualTargetId??rec.manualLineId;
+  if(mt && idx.byId.has(mt)){ const l=idx.byId.get(mt); return {line:l, confidence:'confirmed', via:'Confirmed by user', candidates:[l]}; }
+
+  const bc=normBC(rec.physicalBC);
+  if(bc && idx.byBarcode.has(bc)){
+    const ls=idx.byBarcode.get(bc);
+    if(ls.length===1) return {line:ls[0], confidence:'certain', via:'Physical barcode = PO barcode', candidates:ls};
+    return {line:null, confidence:'ambiguous', via:'Barcode '+bc+' is on '+ls.length+' PO lines (duplicate PO barcode)', candidates:ls, dupPoBarcode:true};
+  }
+  const key=norm(rec.item), sKey=norm(stripBrackets(rec.item||''));
+  for(const [m,k,label] of [[idx.byName,key,'Exact product name'],[idx.byStripped,sKey,'Exact product name (ignoring [code])']]){
+    if(k && m.has(k)){
+      const ls=m.get(k);
+      if(ls.length===1) return {line:ls[0], confidence:'certain', via:label, candidates:ls};
+      return {line:null, confidence:'ambiguous', via:'Product name is on '+ls.length+' PO lines', candidates:ls};
+    }
+  }
+  // similar-name matches: never trusted without confirmation
+  const {numtoks,wordtoks}=splitTokens(tokenize(stripBrackets(rec.item||'')));
+  if(numtoks.size>0){
+    const scored=[];
+    for(const c of idx.tokenList){ if(setEq(c.numtoks,numtoks)){ const s=jaccard(wordtoks,c.wordtoks); if(s>=0.4) scored.push({s,line:c.line}); } }
+    scored.sort((a,b)=>b.s-a.s);
+    if(scored.length){
+      if(scored.length>1 && scored[0].s-scored[1].s < 0.1)
+        return {line:null, confidence:'ambiguous', via:'Name similar to '+scored.filter(x=>scored[0].s-x.s<0.1).length+' PO lines (token match, '+Math.round(scored[0].s*100)+'%)', candidates:scored.slice(0,6).map(x=>x.line)};
+      return {line:scored[0].line, confidence:'uncertain', via:'Similar name (token match, '+Math.round(scored[0].s*100)+'%)', candidates:scored.slice(0,6).map(x=>x.line)};
+    }
+  }
+  const fz=idx.tokenList.map(c=>({s:diceSim(sKey,c.key),line:c.line})).sort((a,b)=>b.s-a.s);
+  if(fz.length && fz[0].s>=0.87){
+    if(fz.length>1 && fz[0].s-fz[1].s < 0.05)
+      return {line:null, confidence:'ambiguous', via:'Name similar to several PO lines (fuzzy, '+Math.round(fz[0].s*100)+'%)', candidates:fz.filter(x=>x.s>=0.8).slice(0,6).map(x=>x.line)};
+    return {line:fz[0].line, confidence:'uncertain', via:'Similar name (fuzzy, '+Math.round(fz[0].s*100)+'%)', candidates:fz.filter(x=>x.s>=0.8).slice(0,6).map(x=>x.line)};
+  }
+  return {line:null, confidence:'none', via:'No PO line matches the barcode or product name', candidates:fz.filter(x=>x.s>=0.5).slice(0,5).map(x=>x.line)};
+}
+
+// ---------- UOM conversion into the Odoo UOM ----------
+// Pieces in one unit of a PO line's Odoo UOM: explicit pieces column on the PO file, else built-in rule / approved definition.
+function odooUnit(line, defs){
+  if(!line) return null;
+  if(toPos(line.explicitPieces)!==null) return {pcs:toPos(line.explicitPieces), source:'PO file pieces column'};
+  return resolveUom(line.uom, 'odoo', defs);
+}
+const TEMP_SOURCE='Temporary — this row only';
+function computeConversion(it, line, settings, defs){
+  const physQty=toNum(it.physicalQty);
+  const physUom=String(it.physicalUom??'').trim();
+  const poUom=line?String(line.uom||'').trim():'';
+  const r={physQty, physUom, poUom, physPieces:null, poPieces:null, factor:null, odooQty:null, physPcs:null, known:false, fractional:false, converted:false, temporary:false, source:'', reason:'', explain:''};
+  if(physQty===null){ r.reason='Physical quantity is blank or not a number'; return r; }
+  if(physQty<0){ r.reason='Physical quantity is negative'; return r; }
+  if(!line){ r.reason='No confirmed PO line, so the Odoo UOM is unknown'; return r; }
+  const ou=odooUnit(line, defs);
+  r.poPieces=ou?ou.pcs:null;
+  const tPhys=toPos(it.tempPhysPieces), tPo=toPos(it.tempPoPieces);
+  const done=(physPieces, poPieces, source)=>{
+    r.physPieces=physPieces; r.poPieces=poPieces; r.source=source;
+    if(physPieces===null){ // same unit as the Odoo UOM: no conversion needed
+      r.factor=1; r.odooQty=physQty; r.known=true;
+      if(poPieces!==null){ r.physPcs=round6(physQty*poPieces); r.explain=physQty+' '+(poUom||'Odoo unit')+' × '+poPieces+' pcs = '+r.physPcs+' PCS (no conversion needed)'; }
+      return r;
+    }
+    const pcs=round6(physQty*physPieces); const q=round6(pcs/poPieces);
+    r.physPcs=pcs; r.factor=round6(physPieces/poPieces); r.odooQty=q; r.known=true; r.converted=r.factor!==1; r.fractional=!Number.isInteger(q);
+    r.explain=physQty+' × '+physPieces+' pcs = '+pcs+' pcs ÷ '+poPieces+' pcs per '+(poUom||'Odoo unit')+' = '+q;
+    return r;
+  };
+  if(tPhys!==null && tPo!==null){ r.temporary=true; return done(tPhys, tPo, TEMP_SOURCE); }
+  // C1 gate (2026-10-01): an UNDEFINED Odoo UOM (CTNP10, bare CTN, Tray, blank, …) is always NEEDS REVIEW —
+  // even when the physical UOM is blank or identical and no arithmetic conversion would be needed. Nothing is guessed.
+  if(!ou){
+    r.reason='Odoo UOM "'+(poUom||'blank')+'" is not defined (built-in: CTN<n>, PCS; or an approved permanent definition) — NEEDS REVIEW even though '+(physUom?(uomKey(physUom)===uomKey(poUom)?'the physical UOM is the same text':'the physical UOM is "'+physUom+'"'):'the physical UOM is blank')+'; no UOM is guessed';
+    return r;
+  }
+  if(!physUom) return done(null, r.poPieces, 'Physical UOM not recorded — treated as the PO/Odoo UOM (rule 2)');
+  if(poUom && uomKey(physUom)===uomKey(poUom)) return done(null, r.poPieces, 'Physical UOM = PO UOM');
+  const pr = tPhys!==null ? {pcs:tPhys, source:TEMP_SOURCE} : (toPos(it.physicalPieces)!==null ? {pcs:toPos(it.physicalPieces), source:'pieces entered on the row'} : resolveUom(physUom, 'physical', defs));
+  const or = tPo!==null ? {pcs:tPo, source:TEMP_SOURCE} : ou;
+  if(!pr || !or){
+    const miss=[]; if(!pr) miss.push('physical UOM "'+physUom+'"'); if(!or) miss.push('Odoo UOM "'+(poUom||'blank')+'"');
+    r.physPieces=pr?pr.pcs:null; r.poPieces=or?or.pcs:null;
+    r.reason='Physical UOM "'+physUom+'" differs from Odoo UOM "'+(poUom||'blank')+'" and '+miss.join(' and ')+(miss.length>1?' are':' is')+' not defined (built-in: CTN<n>, PCS, physical Pack of <n>; or an approved definition) — no conversion invented';
+    return r;
+  }
+  r.temporary = pr.source===TEMP_SOURCE || or.source===TEMP_SOURCE;
+  return done(pr.pcs, or.pcs, 'Physical: '+pr.source+'; Odoo: '+or.source);
+}
+
+// ---------- statuses ----------
+const STATUS = {
+  READY:          {label:'READY', cls:'ok', order:1, sheet:'ready'},
+  QTY_MISMATCH:   {label:'QUANTITY MISMATCH', cls:'warn', order:2, sheet:'qty mismatch'},
+  ADD_BC:         {label:'ADDITIONAL BARCODE', cls:'warn', order:3, sheet:'additional barcode'},
+  ADD_BC_QTY:     {label:'ADDITIONAL BARCODE + QUANTITY DIFFERENCE REVIEW', cls:'warn', order:4, sheet:'addl barcode + qty diff'},
+  NP_EX:          {label:'NEW PRODUCT / EXCHANGE BARCODE REVIEW', cls:'warn', order:5, sheet:'new product - exchange'},
+  NP_EX_QTY:      {label:'NEW PRODUCT / EXCHANGE BARCODE REVIEW + QUANTITY DIFFERENCE REVIEW', cls:'warn', order:6, sheet:'new prod-exch + qty diff'},
+  SPEC_MISMATCH:  {label:'WEIGHT / SPECIFICATION MISMATCH', cls:'bad', order:7, sheet:'weight-spec mismatch'},
+  UOM_REVIEW:     {label:'UOM CONVERSION — NEEDS REVIEW', cls:'bad', order:8, sheet:'uom review'},
+  MATCH_REVIEW:   {label:'PRODUCT MATCH — NEEDS CONFIRMATION', cls:'bad', order:9, sheet:'match review'},
+  BARCODE_REVIEW: {label:'BARCODE BLANK / MALFORMED — NEEDS REVIEW', cls:'bad', order:10, sheet:'barcode review'},
+  DUP_ENTRY:      {label:'POSSIBLE DUPLICATE ENTRY — NEEDS REVIEW', cls:'bad', order:11, sheet:'duplicate entry'},
+  QTY_PENDING:    {label:'QUANTITY CHECK PENDING — NEEDS REVIEW', cls:'bad', order:12, sheet:'qty check pending'},
+  EXTRA:          {label:'EXTRA / NOT ON PO', cls:'bad', order:13, sheet:'extra item - not on PO'},
+  PO_SELECTION:   {label:'PO SELECTION REQUIRED', cls:'bad', order:14, sheet:'po selection required'},
+  PO_MISMATCH:    {label:'PO MISMATCH — NEEDS REVIEW', cls:'bad', order:15, sheet:'po mismatch'},
+};
+const HOLD={v:'hold', label:'Hold — do not upload'};
+
+// Which PO does a physical row belong to? Never combines across POs; never switches a selected PO silently.
+function poCand(x){ const t=x.m.line||x.m.candidates[0]||null; return {poId:x.p.poId, ref:x.p.ref, vendor:x.p.vendor, receiptRefs:x.p.receiptRefs||[], target:t, confidence:x.m.confidence}; }
+function locate(it, S){
+  const none=(via,c)=>({line:null, confidence:'none', via, candidates:c||[]});
+  if(!S.pos.length) return {m:none('No PO loaded'), poId:null};
+  if(it.manualTargetId && S.byAnyId.has(it.manualTargetId) && !it.manualNotOnPo){
+    const t=S.byAnyId.get(it.manualTargetId);
+    return {m:{line:t, confidence:'confirmed', via:'Confirmed by user', candidates:[t]}, poId:t.poId, poSource:'user-choice'};
+  }
+  // With exactly ONE PO loaded there is nothing to choose: an unselected row belongs to that PO (incl. extras).
+  const onlyPo = S.pos.length===1 && !it.poId && !it.poRefText ? S.pos[0].poId : null;
+  const selected = it.poId && S.poById.has(it.poId) ? it.poId : onlyPo;
+  if(onlyPo && !it.poSource) it={...it, poSource:'only PO loaded'};
+  const inPo=pid=>matchToPO({...it, manualTargetId:null, manualLineId:null, manualNotOnPo:false}, S.perPo.get(pid));
+  if(it.manualNotOnPo) return {m:{line:null, confidence:'confirmed-none', via:'User confirmed: not on '+(selected?'PO '+S.poById.get(selected).ref:'any loaded PO'), candidates:[]}, poId:selected, poSource:it.poSource||null};
+  if(it.orphaned) { // its PO line was removed by a re-import — force a human decision
+    const pid=selected; const m=pid?inPo(pid):none('');
+    const cands=pid ? (m.line?[m.line,...m.candidates.filter(c=>c!==m.line)]:m.candidates) : [];
+    return {m:{line:null, confidence:'ambiguous', via:'Its PO line was removed by a re-import ('+(it.orphanNote||'')+') — confirm the line again', candidates:cands.length?cands:(pid?S.targetsByPo.get(pid):[])}, poId:pid, poSource:it.poSource||null};
+  }
+  if(selected){
+    const m=inPo(selected);
+    if(m.confidence!=='none') return {m, poId:selected, poSource:it.poSource||'selected'};
+    const others=S.pos.filter(p=>p.poId!==selected).map(p=>({p,m:inPo(p.poId)})).filter(x=>x.m.confidence!=='none');
+    if(others.length) return {m, poId:selected, poSource:it.poSource||'selected', poState:'mismatch', poCandidates:others.map(poCand)};
+    return {m, poId:selected, poSource:it.poSource||'selected'};
+  }
+  const unknownRef = it.poId ? it.poId : (it.poRefText||null);
+  const hits=S.pos.map(p=>({p,m:inPo(p.poId)})).filter(x=>x.m.confidence!=='none');
+  const certain=hits.filter(x=>x.m.confidence==='certain');
+  const use=certain.length?certain:hits;
+  if(unknownRef) return {m:none('Row names PO "'+unknownRef+'", which is not loaded'), poId:null, poState:'selection', poCandidates:(use.length?use:S.pos.map(p=>({p,m:none('')}))).map(poCand), note:'PO ref "'+unknownRef+'" is not loaded'};
+  if(!use.length){
+    const sugg=[]; for(const p of S.pos){ const m=inPo(p.poId); sugg.push(...m.candidates); }
+    return {m:none('No line on any loaded PO matches the barcode or product name', sugg.slice(0,6)), poId:null};
+  }
+  if(use.length===1){
+    let note='';
+    if(S.pos.length>1){
+      const others=hits.filter(x=>x!==use[0]).map(x=>x.p.ref);
+      if(use[0].m.confidence==='certain')
+        note = others.length
+          ? 'PO '+use[0].p.ref+' determined automatically because it is the only loaded PO with a certain match ('+use[0].m.via+'); '+others.join(', ')+' had only a similar-name candidate, which was not used'
+          : 'PO '+use[0].p.ref+' determined automatically because it is the only loaded PO with a matching line ('+use[0].m.via+')';
+      else
+        note = 'PO '+use[0].p.ref+' is the only loaded PO with a similar-name candidate — the match itself still needs confirmation';
+    }
+    return {m:use[0].m, poId:use[0].p.poId, poSource:'auto', autoNote:note};
+  }
+  return {m:none('Product is on '+use.length+' loaded POs'), poId:null, poState:'selection', poCandidates:use.map(poCand)};
+}
+
+function evaluate(state, defsArg){
+  const defs = defsArg || state.uomDefinitions || [];
+  const settings={blankPhysUomSameAsPo:true}; // business rule #2 — fixed, not configurable
+  const view=shipmentView(state);
+  const S={pos:view.pos, poById:new Map(view.pos.map(p=>[p.poId,p])), perPo:new Map(), targetsByPo:new Map(), byAnyId:new Map(), targets:[]};
+  for(const p of view.pos){
+    const ts=buildTargets(p, defs); S.targetsByPo.set(p.poId, ts); S.targets.push(...ts);
+    const idx=buildPoIndex(ts); S.perPo.set(p.poId, idx);
+    for(const [k,v] of idx.byId) S.byAnyId.set(k,v);
+  }
+  const seen=new Map();
+  const pre=view.items.map(it=>{
+    const d=it.decisions||{};
+    const loc=locate(it, S);
+    const m=loc.m;
+    const resolved=!loc.poState && (m.confidence==='certain'||m.confidence==='confirmed') && !!m.line;
+    const line=resolved?m.line:null;
+    const conv=computeConversion(it, line, settings, defs);
+    const spec=line?specCheck(it,line):{mismatch:false,note:''};
+    const bq=barcodeQuality(it.physicalBC);
+    const dkey=rowKey({...it, poRef:null, poId:loc.poId||''});
+    const dupOf=seen.has(dkey)?seen.get(dkey):undefined; if(!seen.has(dkey)) seen.set(dkey,it.no);
+    return {it,d,m,loc,resolved,line,conv,spec,bq,dupOf, po:loc.poId?S.poById.get(loc.poId):null};
+  });
+  // group per PO line: quantities are compared in Odoo UOM, summed across all rows (lots) of the line
+  const groups=new Map();
+  for(const r of pre){
+    if(!r.line) continue;
+    const excluded=(r.spec.mismatch && r.d.spec!=='same') || (r.dupOf!==undefined && r.d.dup!=='genuine');
+    r.countsTowardLine=!excluded;
+    let g=groups.get(r.line.id); if(!g){ g={line:r.line, rows:[], total:0, known:true, counted:0}; groups.set(r.line.id,g); }
+    g.rows.push(r);
+    if(!excluded){ g.counted++; if(r.conv.known) g.total=round6(g.total+r.conv.odooQty); else g.known=false; }
+  }
+  const rows=pre.map(r=>classifyRow(r, groups));
+  const covered=new Set(groups.keys());
+  const pendingLines=new Set();
+  for(const r of pre){ if(r.resolved) continue; for(const c of r.m.candidates) pendingLines.add(c.id); for(const pc of (r.loc.poCandidates||[])) if(pc.target) pendingLines.add(pc.target.id); }
+  const missing=S.targets.filter(l=>!covered.has(l.id)).map(l=>({
+    line:l, poId:l.poId, poRef:l.poRef, pendingMatch:pendingLines.has(l.id),
+    status:'MISSING', label:'MISSING',
+    reason: pendingLines.has(l.id) ? 'No confirmed physical row yet — a row awaiting match confirmation may belong to this line' : 'Ordered on the PO, nothing physically received',
+    action: pendingLines.has(l.id) ? 'Resolve the pending product-match review first' : 'Confirm short-shipment with the supplier. Nothing is uploaded for this line.'
+  }));
+  const poIssues=[], poInfo=[];
+  for(const p of view.pos){
+    const idx=S.perPo.get(p.poId);
+    for(const [bc,ls] of idx.dupBarcodes) poIssues.push('PO '+p.ref+': barcode '+bc+' is on '+ls.length+' genuinely different lines: '+ls.map(l=>l.item+' ('+(l.uom||'?')+')').join(' | ')+' — rows scanned with this barcode need a manual line choice');
+    for(const t of S.targetsByPo.get(p.poId)) if(t.isGroup) poInfo.push('PO '+p.ref+': '+t.lines.length+' identical lines grouped for receiving — '+t.item+' (rows '+t.lines.map(l=>l.row).join(', ')+'), ordered total '+t.qty+' '+(t.uom||''));
+    for(const l of p.lines){ if(!normBC(l.barcode)) poIssues.push('PO '+p.ref+': line "'+l.item+'" has no barcode (treated as non-formal)'); if(toNum(l.qty)===null) poIssues.push('PO '+p.ref+': line "'+l.item+'" has no numeric quantity'); }
+    if(!String(p.vendor||'').trim()) poIssues.push('PO '+p.ref+': vendor is missing');
+  }
+  return {rows, missing, groups, targets:S.targets, targetsByPo:S.targetsByPo, pos:view.pos, poIssues, poInfo, settings, defs};
+}
+
+function classifyRow(r, groups){
+  const it=r.it, d=r.d, flags=[], decisions=[], reasons=[], actions=[], notes=[];
+  const need=(key,label,options)=>{ const ok=options.some(o=>o.v===d[key]); const dec={key,label,options,value:ok?d[key]:null,required:true}; decisions.push(dec); return dec.value; };
+  const base={no:it.no, it, match:r.m, line:r.line, conv:r.conv, spec:r.spec, bq:r.bq, flags, decisions, reasons, actions, notes, caseNo:null,
+    poBC:r.line?r.line.barcode:(r.m.line?r.m.line.barcode:null), poQty:r.line?r.line.qty:null, poUom:r.line?r.line.uom:'', group:r.line?groups.get(r.line.id):null,
+    poId:r.loc.poId||null, poRef:r.po?r.po.ref:null, vendor:r.po?r.po.vendor:null, poSource:r.loc.poSource||null, poState:r.loc.poState||null, poCandidates:r.loc.poCandidates||[],
+    receiptRefs:r.line?(r.line.receiptRefs||[]):[], targetId:r.line?r.line.id:null, isGroup:!!(r.line&&r.line.isGroup), countsTowardLine:r.line?r.countsTowardLine!==false:null};
+  if(r.loc.autoNote) notes.push(r.loc.autoNote);
+  if(it.splitFrom) notes.push('Split from row #'+it.splitFrom);
+  if(r.loc.poState){
+    const opts=base.poCandidates.map(c=>({v:c.poId, label:c.ref+' — '+(c.vendor||'no vendor')+(c.receiptRefs.length?' — '+c.receiptRefs.join(', '):'')+(c.target?' — '+c.target.item+' — ordered '+(c.target.qty??'?')+' '+(c.target.uom||''):'')}));
+    if(r.loc.poState==='selection'){
+      reasons.push((r.loc.note?r.loc.note+'. ':'')+'The product is on '+opts.length+' candidate PO(s); quantities are never combined across POs.');
+      actions.push('Choose the PO this physical row belongs to. If it belongs to several POs, use Split row. Nothing is counted or uploaded until chosen.');
+      decisions.push({key:'po', label:'Which PO is this row for?', options:opts, value:null, required:true});
+      return finish(base, 'PO_SELECTION', null);
+    }
+    reasons.push('The selected PO '+(base.poRef||'')+' does not contain this product, but '+opts.length+' other loaded PO(s) do. The tool will not switch POs on its own.');
+    actions.push('Choose the correct PO, split the row, or confirm it is an extra on the selected PO.');
+    decisions.push({key:'po', label:'Correct PO?', options:[...opts, {v:'__keep_extra__', label:'Keep on '+(base.poRef||'selected PO')+' — treat as EXTRA (not on this PO)'}], value:null, required:true});
+    return finish(base, 'PO_MISMATCH', null);
+  }
+  if(base.isGroup) notes.push('Identical duplicate group: '+r.line.lines.length+' PO lines (file rows '+r.line.lines.map(l=>l.row).join(', ')+'), ordered '+r.line.lines.map(l=>l.qty).join(' + ')+' = '+r.line.qty+' '+(r.line.uom||'')+' — received quantity is not allocated to individual lines');
+
+  if(!r.line){
+    let status;
+    const opts=r.m.candidates.map(c=>({v:c.id,label:lineLabel(c)}));
+    if(r.m.confidence==='uncertain' || r.m.confidence==='ambiguous'){
+      status='MATCH_REVIEW';
+      reasons.push(r.m.via+(r.m.line?' → suggested: '+r.m.line.item:''));
+      actions.push('Confirm which PO line this product is, or mark it Not on PO. Nothing is uploaded until confirmed.');
+      decisions.push({key:'match', label:'Which PO line is this?', options:[...opts,{v:'__none__',label:'Not on PO (extra)'}], value:null, required:true});
+      if(r.m.dupPoBarcode) flags.push('DUP_PO_BARCODE');
+    } else {
+      status='EXTRA'; base.caseNo=6;
+      reasons.push(r.m.confidence==='confirmed-none' ? 'User confirmed this item is not on the PO' : r.m.via);
+      actions.push('Check in Odoo whether the product exists; create or link it outside this tool. Not included in the upload.');
+      decisions.push({key:'match', label:'Link to a PO line instead (optional)', options:opts.length?opts:[], value:null, required:false, allLines:true});
+    }
+    return finish(base, status, null);
+  }
+
+  const line=r.line, formal=isFormalBarcode(line.barcode);
+  if(r.m.confidence==='confirmed') notes.push('Match confirmed by user');
+  // barcode state (compare physical vs PO barcode)
+  const bcState = r.bq.q!=='ok' ? 'unknown' : (normBC(it.physicalBC)===normBC(line.barcode) ? 'same' : 'different');
+  // quantity state in Odoo UOM
+  const g=groups.get(line.id), poQty=toNum(line.qty);
+  let qtyState;
+  if(!r.conv.known) qtyState='uom';
+  else if(poQty===null) qtyState='po-blank';
+  else if(!r.countsTowardLine) qtyState=qtyEq(r.conv.odooQty,poQty)?'same':'different';
+  else if(!g.known) qtyState='group-pending';
+  else qtyState=qtyEq(g.total,poQty)?'same':'different';
+  base.qtyState=qtyState; base.bcState=bcState; base.formal=formal;
+  if(g && g.rows.length>1) notes.push('PO line received in '+g.rows.length+' rows; total in Odoo UOM = '+(g.known?g.total:'unknown'));
+  if(r.conv.converted) notes.push('Converted: '+r.conv.explain);
+
+  // blocking checks
+  if(r.dupOf!==undefined){
+    flags.push('DUP_ENTRY'); reasons.push('Identical to row #'+r.dupOf+' (same product, barcode, qty, UOM, expiry)');
+    actions.push('Confirm this is a separate genuine entry, or remove it');
+    need('dup','Duplicate entry?',[{v:'genuine',label:'Separate genuine entry — keep'},HOLD]);
+  }
+  if(r.spec.mismatch){
+    flags.push('SPEC_MISMATCH'); reasons.push('Weight/spec differs: '+r.spec.note);
+    actions.push('Check the product weight. If it really differs, receive it against the correct Odoo product (outside this tool).');
+    need('spec','Weight / spec',[{v:'same',label:'Checked — physical spec was mis-recorded; it matches the PO'},HOLD]);
+  } else if(r.spec.note) notes.push(r.spec.note);
+  if(!r.conv.known){
+    flags.push('UOM_REVIEW'); reasons.push(r.conv.reason);
+    actions.push('Enter pieces per physical unit and pieces per Odoo unit (from the product/Odoo), or correct the physical UOM');
+    decisions.push({key:'uom', type:'conversion', label:'Temporary conversion — this row only (pcs per physical / pcs per Odoo unit)', value:null, required:true, physPieces:r.conv.physPieces, poPieces:r.conv.poPieces});
+  } else if(r.conv.fractional){
+    flags.push('UOM_REVIEW'); reasons.push('Converted quantity '+r.conv.odooQty+' is not a whole '+(line.uom||'Odoo unit')+' ('+r.conv.explain+')');
+    actions.push('Check the count/pack size; accept the fractional Odoo quantity only if it is correct');
+    need('fraction','Fractional Odoo qty',[{v:'accept',label:'Accept '+r.conv.odooQty+' '+(line.uom||'')},HOLD]);
+    if(r.conv.temporary) decisions.push({key:'uom', type:'conversion', label:'Temporary conversion — this row only', value:'set', required:false, physPieces:r.conv.physPieces, poPieces:r.conv.poPieces});
+  } else if(r.conv.temporary){
+    decisions.push({key:'uom', type:'conversion', label:'Temporary conversion — this row only', value:'set', required:false, physPieces:r.conv.physPieces, poPieces:r.conv.poPieces});
+  }
+  if(bcState==='unknown'){
+    flags.push('BARCODE_REVIEW'); reasons.push(r.bq.note);
+    if(formal){
+      actions.push('Rescan and edit the row, or confirm the product identity and upload with the PO barcode');
+      need('physbc','Physical barcode',[{v:'use_po',label:'Product identity confirmed — upload with PO barcode '+normBC(line.barcode)},HOLD]);
+    } else {
+      actions.push('Rescan and edit the row — the PO barcode is non-formal, so there is no safe barcode to upload');
+      need('physbc','Physical barcode',[HOLD]);
+    }
+  } else if(!r.bq.formal){ notes.push('Physical barcode is not 13 digits'); }
+  if(qtyState==='group-pending'){
+    flags.push('QTY_PENDING'); reasons.push('Another row of this PO line needs UOM review, so the line total cannot be compared yet');
+    actions.push('Resolve the UOM review on the other row(s) of this PO line');
+  }
+  if(qtyState==='po-blank'){
+    flags.push('QTY_PENDING'); reasons.push('PO quantity is blank or not a number');
+  }
+
+  // core receiving case
+  let caseStatus=null;
+  const qtyKnown = qtyState==='same'||qtyState==='different'||qtyState==='po-blank';
+  const qtyDiff = qtyState==='different'||qtyState==='po-blank';
+  if(bcState!=='unknown' && qtyKnown){
+    if(bcState==='same'){ base.caseNo = qtyDiff?2:1; caseStatus = qtyDiff?'QTY_MISMATCH':'READY'; }
+    else { base.caseNo = qtyDiff?4:3; caseStatus = formal ? (qtyDiff?'ADD_BC_QTY':'ADD_BC') : (qtyDiff?'NP_EX_QTY':'NP_EX'); }
+  }
+  if(qtyDiff){
+    const recv = r.countsTowardLine&&g ? g.total : r.conv.odooQty;
+    reasons.push('Quantity differs: PO '+(line.qty??'blank')+' vs received '+recv+' '+(line.uom||'')+(g&&g.rows.length>1&&r.countsTowardLine?' (total of '+g.counted+' rows)':''));
+    actions.push('Recount. Accept the received quantity for upload, or hold.');
+    need('qty','Quantity difference',[{v:'accept',label:'Recounted — upload received qty '+r.conv.odooQty+' '+(line.uom||'')},HOLD]);
+  }
+  if(bcState==='different'){
+    if(formal){
+      reasons.push('Physical barcode '+normBC(it.physicalBC)+' ≠ PO barcode '+normBC(line.barcode)+' (PO barcode is formal) — matched via '+r.m.via);
+      actions.push('Add the physical barcode to this Odoo product as an additional barcode (do this in Odoo)');
+      need('barcode','Additional barcode',[{v:'additional',label:'Confirmed same product — add '+normBC(it.physicalBC)+' as additional barcode'},HOLD]);
+    } else {
+      reasons.push('Physical barcode '+normBC(it.physicalBC)+' ≠ PO barcode "'+(normBC(line.barcode)||'blank')+'" (PO barcode is NON-formal) — matched via '+r.m.via);
+      actions.push('Check in Odoo: usually a NEW PRODUCT, sometimes an existing product needing an EXCHANGE BARCODE. Make the change in Odoo, then record which.');
+      need('barcode','New product or exchange barcode?',[
+        {v:'exchange',label:'Existing product — exchange barcode (Odoo barcode replaced by '+normBC(it.physicalBC)+')'},
+        {v:'new_product',label:'New product — created in Odoo with barcode '+normBC(it.physicalBC)},HOLD]);
+    }
+  }
+  if(caseStatus==='READY'){
+    reasons.unshift('Barcode and quantity match'+(r.conv.converted?' after conversion to '+(line.uom||'Odoo UOM'):'')+'; matched via '+r.m.via);
+  }
+
+  const priority=['DUP_ENTRY','SPEC_MISMATCH','UOM_REVIEW','BARCODE_REVIEW','QTY_PENDING'];
+  const blocking=priority.find(f=>flags.includes(f));
+  const status=blocking || caseStatus || 'QTY_PENDING';
+  if(status==='READY' && !actions.length) actions.push('None — included in the Odoo upload');
+  return finish(base, status, caseStatus);
+}
+
+function finish(base, status, caseStatus){
+  const req=base.decisions.filter(x=>x.required);
+  const pending=req.filter(x=>x.value===null);
+  const held=req.filter(x=>x.value==='hold');
+  base.status=status; base.caseStatus=caseStatus;
+  base.statusLabel=STATUS[status].label;
+  if(held.length) base.review='ON HOLD';
+  else if(pending.length) base.review='PENDING: '+pending.map(x=>x.label).join('; ');
+  else if(req.length) base.review='RESOLVED BY USER';
+  else base.review= status==='READY' ? 'AUTO — no review needed' : 'NOT UPLOADABLE';
+  // upload eligibility
+  let eligible=false, uploadBC=null;
+  const d=base.it.decisions||{};
+  if(base.line && base.conv.known && !pending.length && !held.length && caseStatus){
+    if(base.bcState==='same') uploadBC=normBC(base.line.barcode);
+    else if(base.bcState==='unknown' && d.physbc==='use_po') uploadBC=normBC(base.line.barcode);
+    else if(base.bcState==='different' && base.formal && d.barcode==='additional') uploadBC=normBC(base.line.barcode);
+    else if(base.bcState==='different' && !base.formal && (d.barcode==='exchange'||d.barcode==='new_product')) uploadBC=normBC(base.it.physicalBC);
+    eligible = !!uploadBC;
+  }
+  if(base.bcState==='unknown' && d.physbc==='use_po' && base.line && !pending.length && !held.length && base.conv.known && base.qtyState!=='group-pending' && base.qtyState!=='uom'){
+    uploadBC=normBC(base.line.barcode); eligible=!!uploadBC;
+  }
+  base.uploadEligible=eligible; base.uploadBarcode=eligible?uploadBC:null;
+  base.odooQty=base.conv.known?base.conv.odooQty:null;
+  return base;
+}
+
+// ---------- Odoo upload build + validation ----------
+function buildUpload(ev, poId){
+  const cand=ev.rows.filter(r=>r.uploadEligible && (poId===undefined || r.poId===poId)).map(r=>({no:r.no, barcode:r.uploadBarcode, qty:r.odooQty, uom:r.poUom||'', expiry:r.it.expiry||'', item:r.line.item, lineId:r.line.id, status:r.statusLabel, fractional:r.conv.fractional, poId:r.poId, poRef:r.poRef, receiptRef:(r.receiptRefs||[]).join(', ')}));
+  const checks=[], rejected=[], rows=[];
+  for(const u of cand){
+    const errs=[];
+    if(!u.barcode) errs.push('blank barcode');
+    if(typeof u.qty!=='number' || !isFinite(u.qty)) errs.push('quantity is not a number');
+    else if(u.qty<=0) errs.push('quantity must be greater than 0');
+    if(errs.length) rejected.push({...u, errors:errs}); else rows.push(u);
+  }
+  const src=new Map(ev.rows.map(r=>[r.no,r]));
+  const allEligible=rows.every(u=>{ const r=src.get(u.no); return r && r.uploadEligible && r.conv.known; });
+  checks.push({check:'Only validated/resolved rows included', result:allEligible?'PASS':'FAIL', detail:rows.length+' rows; each has every required review decision completed'});
+  checks.push({check:'Quantities expressed in the Odoo UOM', result:allEligible?'PASS':'FAIL', detail:'Every row carries a known conversion into its PO/Odoo UOM'});
+  checks.push({check:'Rows rejected (blank barcode / non-positive or non-numeric qty)', result:rejected.length?'FAIL':'PASS', detail:rejected.length?rejected.map(r=>'#'+r.no+' '+r.item+': '+r.errors.join(', ')).join(' | '):'none'});
+  const keyCount=new Map(); for(const u of rows){ const k=u.barcode+'|'+u.expiry; keyCount.set(k,(keyCount.get(k)||0)+1); }
+  const dupKeys=new Set([...keyCount].filter(([,n])=>n>1).map(([k])=>k));
+  for(const u of rows) u.possibleDuplicate=dupKeys.has(u.barcode+'|'+u.expiry);
+  checks.push({check:'Same barcode + expiry more than once', result:dupKeys.size?'WARN':'PASS', detail:dupKeys.size?[...dupKeys].join(', '):'none'});
+  const bcLines=new Map(); for(const u of rows){ if(!bcLines.has(u.barcode)) bcLines.set(u.barcode,new Set()); bcLines.get(u.barcode).add(u.lineId); }
+  const shared=[...bcLines].filter(([,s])=>s.size>1).map(([b])=>b);
+  checks.push({check:'Barcode used for more than one PO product', result:shared.length?'WARN':'PASS', detail:shared.length?shared.join(', '):'none'});
+  const nonFormal=rows.filter(u=>!isFormalBarcode(u.barcode));
+  checks.push({check:'Non-formal barcodes in upload', result:nonFormal.length?'WARN':'PASS', detail:nonFormal.length?nonFormal.map(u=>'#'+u.no+' '+u.barcode).join(', '):'none'});
+  const noExp=rows.filter(u=>!String(u.expiry).trim());
+  checks.push({check:'Rows without expiry date', result:noExp.length?'WARN':'PASS', detail:noExp.length?noExp.map(u=>'#'+u.no).join(', '):'none'});
+  const frac=rows.filter(u=>u.fractional);
+  checks.push({check:'Fractional Odoo quantities (user-accepted)', result:frac.length?'WARN':'PASS', detail:frac.length?frac.map(u=>'#'+u.no+' '+u.qty).join(', '):'none'});
+  return {rows, rejected, checks, errors:checks.filter(c=>c.result==='FAIL').length, warnings:checks.filter(c=>c.result==='WARN').length};
+}
+
+// ---------- session migration: v1 backup / v2 single-PO session → v3 multi-PO (input never modified) ----------
+function cleanItem(it){
+  return { no:it.no, item:it.item, physicalBC:it.physicalBC??null, physicalQty:it.physicalQty??null, expiry:it.expiry??null, notes:it.notes??null,
+    physicalUom:it.physicalUom??null, physicalPieces:it.physicalPieces??null, physicalSpec:it.physicalSpec??null,
+    poId:it.poId??null, poSource:it.poSource??null, poRefText:it.poRefText??null,
+    manualTargetId:it.manualTargetId??null, manualNotOnPo:!!it.manualNotOnPo,
+    tempPhysPieces:it.tempPhysPieces??it.manualPhysPieces??null, tempPoPieces:it.tempPoPieces??it.manualPoPieces??null,
+    orphaned:!!it.orphaned, orphanNote:it.orphanNote??null, splitFrom:it.splitFrom??null, splitGroup:it.splitGroup??null,
+    decisions:it.decisions?{...it.decisions}:{} };
+}
+function migrateSession(data){
+  const d=JSON.parse(JSON.stringify(data||{}));
+  const notes=[];
+  const out={version:3, shipmentName:d.shipmentName||'', pos:[], items:[], nextNo:1, poSeq:0, splitArchive:d.splitArchive||{}, activePoId:d.activePoId||null};
+  if(d.version===3){
+    out.pos=d.pos||[]; out.items=(d.items||[]).map(cleanItem); out.poSeq=d.poSeq||out.pos.length;
+  } else if(Array.isArray(d.poLines)){
+    const idMap=new Map();
+    const lines=d.poLines.map((l,i)=>{ const id='PO1-L'+(i+1); idMap.set(l.id,id); return { id, poId:'PO1', row:l.row??null, barcode:l.barcode??null, item:l.item, internalRef:l.internalRef??extractInternalRef(l.item),
+      uom:l.uom||'', qty:l.qty??null, explicitPieces:l.explicitPieces??null, receiptRef:l.receiptRef??null }; });
+    out.pos=[{ poId:'PO1', ref:fileStem(d.poFileName)||'PO-1', refSource:'migrated from v2 session', vendor:'', fileName:d.poFileName||'', importedAt:null, version:1, receiptRefs:[], history:[], lines }];
+    out.poSeq=1;
+    out.items=(d.items||[]).map(it=>{ const c=cleanItem(it); c.poId='PO1'; c.poSource='migrated'; if(it.manualLineId) c.manualTargetId=idMap.get(it.manualLineId)||null; return c; });
+    notes.push('Migrated a v2 single-PO session: PO ref "'+out.pos[0].ref+'" taken from the old PO file name — please confirm it and enter the vendor.');
+  } else {
+    out.items=(d.items||[]).map(cleanItem);
+    if(out.items.length) notes.push('Loaded a v1 session backup: '+out.items.length+' rows have no PO yet — load the PO file(s) to classify them.');
+  }
+  out.nextNo = d.nextNo || (out.items.reduce((m,it)=>Math.max(m,it.no||0),0)+1);
+  if(out.items.some(it=>it.no>=out.nextNo)) out.nextNo=out.items.reduce((m,it)=>Math.max(m,it.no||0),0)+1;
+  return {state:out, notes, uomDefinitionsSnapshot:Array.isArray(d.uomDefinitionsSnapshot)?d.uomDefinitionsSnapshot:[]};
+}
+function sessionSnapshot(state, defs){
+  return { version:3, savedAt:new Date().toISOString(), shipmentName:state.shipmentName||'', pos:state.pos||[], items:state.items||[], nextNo:state.nextNo||1, poSeq:state.poSeq||0,
+    splitArchive:state.splitArchive||{}, activePoId:state.activePoId||null, uomDefinitionsSnapshot:defs||[] };
+}
+// Definitions offered from a backup/import file that are missing from the permanent table (never overwrites).
+function definitionsToOffer(current, incoming){
+  const have=new Map((current||[]).map(d=>[uomKey(d.label),d]));
+  const add=[], conflicts=[];
+  for(const d of (incoming||[])){ const h=have.get(uomKey(d.label)); if(!h) add.push(d); else if(String(h.pcsPerUnit)!==String(d.pcsPerUnit)||h.side!==d.side) conflicts.push({current:h, incoming:d}); }
+  return {add, conflicts};
+}
+
+// ---------- row-level PO / match choices (pure state mutations used by UI and tests) ----------
+function itemByNo(state,no){ return (state.items||[]).find(x=>x.no===no)||null; }
+function setRowPo(state, no, v){
+  const it=itemByNo(state,no); if(!it) return false;
+  if(v==='__keep_extra__'){ it.manualNotOnPo=true; it.manualTargetId=null; return true; }
+  if(!v){ it.poId=null; it.poSource=null; return true; }
+  it.poId=v; it.poSource='user-choice'; it.poRefText=null; it.manualNotOnPo=false; it.manualTargetId=null; it.manualLineId=null;
+  return true;
+}
+function setRowMatch(state, no, v){
+  const it=itemByNo(state,no); if(!it) return false;
+  it.orphaned=false; it.orphanNote=null;
+  if(v==='__none__'){ it.manualNotOnPo=true; it.manualTargetId=null; it.manualLineId=null; }
+  else if(v){ it.manualTargetId=v; it.manualLineId=null; it.manualNotOnPo=false; }
+  else { it.manualTargetId=null; it.manualLineId=null; it.manualNotOnPo=false; }
+  return true;
+}
+
+// ---------- Split Row: one physical row → one row per PO. Never allocates automatically. ----------
+function splitItem(state, no, parts){
+  const idx=(state.items||[]).findIndex(x=>x.no===no);
+  if(idx<0) return {errors:['Row #'+no+' not found']};
+  const orig=state.items[idx];
+  const errors=[];
+  const total=toNum(orig.physicalQty);
+  if(total===null) errors.push('The row has no numeric physical quantity');
+  if(!Array.isArray(parts)||parts.length<2) errors.push('A split needs at least two parts');
+  const poIds=new Set((state.pos||[]).map(p=>p.poId));
+  let sum=0;
+  (parts||[]).forEach((p,i)=>{ const q=toNum(p.qty); if(q===null||q<=0) errors.push('Part '+(i+1)+': quantity must be greater than 0'); else sum+=q; if(!poIds.has(p.poId)) errors.push('Part '+(i+1)+': choose a loaded PO'); });
+  const seenPo=new Set(); (parts||[]).forEach(p=>{ if(seenPo.has(p.poId)) errors.push('Each PO may appear only once in a split'); seenPo.add(p.poId); });
+  if(total!==null && Math.abs(round6(sum)-total)>1e-9) errors.push('Parts add up to '+round6(sum)+' but the row has '+total+' — they must add up exactly');
+  if(errors.length) return {errors:[...new Set(errors)]};
+  const group='S'+orig.no;
+  state.splitArchive=state.splitArchive||{};
+  state.splitArchive[group]=JSON.parse(JSON.stringify(orig));
+  const created=parts.map(p=>({ ...orig, no:state.nextNo++, physicalQty:toNum(p.qty), poId:p.poId, poSource:'split', poRefText:null,
+    manualTargetId:null, manualLineId:null, manualNotOnPo:false, orphaned:false, orphanNote:null, decisions:{}, splitFrom:orig.no, splitGroup:group }));
+  state.items.splice(idx,1,...created);
+  return {created:created.map(c=>c.no), splitGroup:group};
+}
+function canUndoSplit(state, group){
+  const rows=(state.items||[]).filter(x=>x.splitGroup===group);
+  if(!rows.length || !(state.splitArchive||{})[group]) return {ok:false, reason:'Nothing to undo'};
+  const touched=rows.filter(x=>Object.keys(x.decisions||{}).length || x.manualTargetId || x.manualNotOnPo);
+  if(touched.length) return {ok:false, reason:'Rows '+touched.map(x=>'#'+x.no).join(', ')+' already have review decisions'};
+  return {ok:true};
+}
+function undoSplit(state, group){
+  const c=canUndoSplit(state, group); if(!c.ok) return {errors:[c.reason]};
+  const first=state.items.findIndex(x=>x.splitGroup===group);
+  const orig=state.splitArchive[group];
+  state.items=state.items.filter(x=>x.splitGroup!==group);
+  state.items.splice(first,0,orig);
+  delete state.splitArchive[group];
+  return {restored:orig.no};
+}
+
+// ---------- Re-import of a PO already loaded: preview, then apply on confirmation ----------
+function reimportKey(l){ return normBC(l.barcode)+'|'+(l.internalRef?'R:'+norm(l.internalRef):'N:'+norm(stripBrackets(l.item))); }
+function keyedOccurrences(lines){ const cnt=new Map(); return lines.map(l=>{ const k=reimportKey(l); const n=(cnt.get(k)||0)+1; cnt.set(k,n); return {k:k+'#'+n, l}; }); }
+function planReimport(state, poId, draft, defs){
+  const po=(state.pos||[]).find(p=>p.poId===poId); if(!po) return {errors:['PO not loaded']};
+  const oldK=keyedOccurrences(po.lines), newK=keyedOccurrences(draft.lines);
+  const newMap=new Map(newK.map(x=>[x.k,x.l])), oldMap=new Map(oldK.map(x=>[x.k,x.l]));
+  const added=newK.filter(x=>!oldMap.has(x.k)).map(x=>x.l), removed=oldK.filter(x=>!newMap.has(x.k)).map(x=>x.l);
+  const changed=[];
+  for(const x of oldK){ const n=newMap.get(x.k); if(!n) continue; const f=[];
+    if(String(toNum(n.qty))!==String(toNum(x.l.qty))) f.push('qty '+x.l.qty+' → '+n.qty);
+    if(uomKey(n.uom)!==uomKey(x.l.uom)) f.push('UOM '+x.l.uom+' → '+n.uom);
+    if(norm(n.item)!==norm(x.l.item)) f.push('name changed');
+    if(f.length) changed.push({old:x.l, new:n, fields:f}); }
+  const removedIds=new Set(removed.map(l=>l.id));
+  const ev=evaluate(state, defs);
+  const orphanRows=ev.rows.filter(r=>r.poId===poId && r.line && r.line.lines.every(l=>removedIds.has(l.id))).map(r=>({no:r.no, item:r.it.item, line:r.line.item}));
+  return { poId, ref:po.ref, added, removed, changed, unchanged:oldK.length-removed.length-changed.length, orphanRows,
+    oldCount:po.lines.length, newCount:draft.lines.length,
+    vendorChange: draft.vendor && norm(draft.vendor)!==norm(po.vendor) ? {from:po.vendor, to:draft.vendor} : null,
+    receiptRefs:{from:po.receiptRefs||[], to:draft.receiptRefs||[]} };
+}
+function applyReimport(state, poId, draft, plan, opts){
+  const po=(state.pos||[]).find(p=>p.poId===poId); if(!po) return {errors:['PO not loaded']};
+  const oldK=keyedOccurrences(po.lines);
+  po.version=(po.version||1)+1;
+  const newLines=draft.lines.map((l,i)=>({...l, id:poId+'-v'+po.version+'-L'+(i+1), poId}));
+  const newIdByKey=new Map(keyedOccurrences(newLines).map(x=>[x.k,x.l.id]));
+  const idMap=new Map(); for(const x of oldK){ const n=newIdByKey.get(x.k); if(n){ idMap.set(x.l.id,n); idMap.set('G:'+x.l.id,n); } }
+  const orphanNos=new Set((plan.orphanRows||[]).map(o=>o.no));
+  const date=new Date().toISOString().slice(0,10);
+  let remapped=0, cleared=0, orphaned=0;
+  for(const it of state.items||[]){
+    const mt=it.manualTargetId??it.manualLineId;
+    if(mt && oldK.some(x=>x.l.id===mt||'G:'+x.l.id===mt)){
+      if(idMap.has(mt)){ it.manualTargetId=idMap.get(mt); it.manualLineId=null; remapped++; }
+      else { it.manualTargetId=null; it.manualLineId=null; cleared++; }
+    }
+    if(orphanNos.has(it.no)){ const o=plan.orphanRows.find(x=>x.no===it.no); it.orphaned=true; it.orphanNote='line "'+o.line+'" removed on '+date; it.poId=poId; it.poSource=it.poSource||'auto'; orphaned++; }
+  }
+  po.lines=newLines;
+  po.receiptRefs=draft.receiptRefs||[];
+  if(opts && opts.vendor) po.vendor=String(opts.vendor).trim();
+  po.fileName=draft.fileName||po.fileName;
+  po.history=po.history||[];
+  po.history.push({date, added:plan.added.length, removed:plan.removed.length, changed:plan.changed.length, file:draft.fileName||''});
+  return {remapped, cleared, orphaned};
+}
+function removePo(state, poId){
+  const po=(state.pos||[]).find(p=>p.poId===poId); if(!po) return false;
+  state.pos=state.pos.filter(p=>p.poId!==poId);
+  for(const it of state.items||[]) if(it.poId===poId){ it.poRefText=po.ref; it.poId=null; it.poSource=null; it.manualTargetId=null; it.manualLineId=null; }
+  return true;
+}
+
+function decisionText(r){
+  return r.decisions.filter(x=>x.value!==null).map(x=>{ if(x.type==='conversion') return x.label+': '+x.physPieces+' / '+x.poPieces; const o=(x.options||[]).find(o=>o.v===x.value); return x.label+': '+(o?o.label:x.value); }).join(' | ');
+}
+
+/// ---------- workbooks: per-PO reconciliation + master shipment reconciliation ----------
+const SHEET_ORDER = Object.keys(STATUS).sort((a,b)=>STATUS[a].order-STATUS[b].order);
+function rowPcs(r){
+  const pp=r.conv.poPieces;
+  const orderedPcs = (r.line && toNum(r.line.qty)!==null && pp) ? round6(toNum(r.line.qty)*pp) : null;
+  const lineRecvPcs = (r.group && r.group.known && pp) ? round6(r.group.total*pp) : null;
+  return {physPcs:r.conv.physPcs, orderedPcs, lineRecvPcs, diffPcs:(orderedPcs!==null&&lineRecvPcs!==null)?round6(lineRecvPcs-orderedPcs):null};
+}
+const DETAIL_H=['No.','PO Ref','Vendor','Receipt Ref','PO Assigned By','Product (physical)','PO Product','Identical Group','Matched Via','Match Confidence','PO Barcode','Physical Barcode','PO Barcode Formal?','PO UOM','Physical UOM','Pieces per Physical Unit','Pieces per Odoo Unit','Conversion Factor','Conversion Source / Working','PO Qty','Physical Qty','Converted Odoo Qty','PO Line Received Total (Odoo UOM)','PO Qty (PCS)','Physical (PCS)','Line Received (PCS)','Line Difference (PCS)','Expiry','Physical Spec','Case','Status','Reason','Required Action','Review Status','Decisions','In Upload?','Upload Barcode','Split From','Notes (row)','Notes (tool)'];
+const DETAIL_W=[6,12,18,16,12,40,40,10,30,12,16,16,10,10,14,10,10,10,40,8,10,10,12,10,10,10,10,12,12,6,40,60,60,30,50,8,16,8,24,50];
+function detailRow(r){
+  const p=rowPcs(r);
+  return [r.no, r.poRef||'', r.vendor||'', (r.receiptRefs||[]).join(', '), r.poSource||'', r.it.item, r.line?r.line.item:(r.match.line?'(suggested) '+r.match.line.item:''),
+    r.isGroup?r.line.lines.length+' lines':'', r.match.via, r.match.confidence,
+    r.poBC??'', r.it.physicalBC??'', r.line?(r.formal?'Yes':'No'):'', r.poUom||'', r.conv.physUom||(r.line?'(same as PO)':''),
+    r.conv.physPieces??'', r.conv.poPieces??'', r.conv.factor??'', r.conv.explain||r.conv.source||r.conv.reason,
+    r.poQty??'', r.it.physicalQty??'', r.odooQty??'', r.group&&r.group.known?r.group.total:'',
+    p.orderedPcs??'', p.physPcs??'', p.lineRecvPcs??'', p.diffPcs??'', r.it.expiry||'', r.it.physicalSpec||'',
+    r.caseNo??'', r.statusLabel, r.reasons.join(' | '), r.actions.join(' | '), r.review, decisionText(r),
+    r.uploadEligible?'Yes':'No', r.uploadBarcode||'', r.it.splitFrom||'', r.it.notes||'', r.notes.join(' | ')];
+}
+function uomDefinitionsUsedAoa(ev, rows){
+  const a=[['Type','UOM','PCS per unit','Side','Approved by','Approved on','Note / used by']];
+  for(const b of BUILTIN_UOM_RULES) a.push(['Built-in rule', b.label, '', b.side, '', '', '']);
+  for(const d of (ev.defs||[])){
+    const used=rows.filter(r=>String(r.conv.source||'').includes('"'+d.label+'"')).map(r=>'#'+r.no);
+    a.push(['Approved definition', d.label, d.pcsPerUnit, d.side, d.approvedBy||'', d.approvedOn||'', (d.note?d.note+' — ':'')+(used.length?'used by rows '+used.join(', '):'not used by any row')]);
+  }
+  for(const r of rows.filter(r=>r.conv.temporary)) a.push(['Temporary — row only', r.conv.physUom||'', '', '', '', '', 'Row #'+r.no+': '+r.conv.explain]);
+  return a;
+}
+// Status of one PO (approved definitions G).
+function poSummary(ev, po){
+  const rows=ev.rows.filter(r=>r.poId===po.poId);
+  const targets=(ev.targetsByPo&&ev.targetsByPo.get(po.poId))||[];
+  const missing=ev.missing.filter(m=>m.poId===po.poId);
+  const cnt=k=>rows.filter(r=>r.status===k).length;
+  let orderedPcs=0, orderedPcsUnknownLines=0;
+  for(const l of po.lines){ const u=odooUnit(l, ev.defs); const q=toNum(l.qty); if(u&&q!==null) orderedPcs=round6(orderedPcs+q*u.pcs); else orderedPcsUnknownLines++; }
+  let receivedPcs=0, receivedPcsUnknownRows=0;
+  for(const r of rows){ if(!r.line || r.countsTowardLine===false) continue; if(r.conv.physPcs!==null) receivedPcs=round6(receivedPcs+r.conv.physPcs); else receivedPcsUnknownRows++; }
+  let readyLines=0, qtyMismatchLines=0;
+  for(const t of targets){ const g=ev.groups.get(t.id); if(!g) continue;
+    const trs=rows.filter(r=>r.targetId===t.id);
+    if(trs.length && trs.every(r=>r.status==='READY')) readyLines+=t.lines.length;
+    if(g.known && toNum(t.qty)!==null && !qtyEq(g.total,toNum(t.qty))) qtyMismatchLines+=t.lines.length; }
+  const extras=cnt('EXTRA');
+  const pending=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA');
+  const weightHolds=cnt('SPEC_MISMATCH'), uomReviews=cnt('UOM_REVIEW');
+  const otherUnresolved=pending.length-weightHolds-uomReviews;
+  let status;
+  if(!rows.length) status='NOT STARTED';
+  else if(pending.length) status='NEEDS REVIEW';
+  else if(missing.length || extras || rows.some(r=>r.status!=='READY')) status='RESOLVED WITH DIFFERENCES';
+  else status='COMPLETE';
+  return { poId:po.poId, ref:po.ref, vendor:po.vendor, receiptRefs:po.receiptRefs||[], lines:po.lines.length, targets:targets.length,
+    orderedPcs, orderedPcsUnknownLines, receivedPcs, receivedPcsUnknownRows, diffPcs:round6(receivedPcs-orderedPcs),
+    rows:rows.length, readyLines, qtyMismatchLines, missingLines:missing.reduce((a,m)=>a+m.line.lines.length,0), extras,
+    uomReviews, weightHolds, otherUnresolved, pending:pending.length, uploadRows:rows.filter(r=>r.uploadEligible).length, status };
+}
+const PO_STATUS_ORDER=['NEEDS REVIEW','NOT STARTED','RESOLVED WITH DIFFERENCES','COMPLETE'];
+
+// One reconciliation workbook for ONE PO. Rows/upload/missing are filtered from the single shipment-wide evaluation.
+function buildPoWorkbook(XLSX, state, ev, poId){
+  const po=ev.pos.find(p=>p.poId===poId);
+  const rows=ev.rows.filter(r=>r.poId===poId);
+  const missing=ev.missing.filter(m=>m.poId===poId);
+  const up=buildUpload(ev, poId);
+  const sum=poSummary(ev, po);
+  const wb=XLSX.utils.book_new();
+  const add=(name,aoa,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
+  const byStatus={}; for(const k in STATUS) byStatus[k]=[]; for(const r of rows) byStatus[r.status].push(r);
+  const pending=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA');
+
+  const s=[[(state.shipmentName||'Box for Less')+' — PO '+po.ref+' — Reconciliation (v2)'],['Generated by Shipment Manager v2 — one workbook per PO; quantities in the Odoo UOM (Allowed Uom) with PCS equivalents'],[],
+    ['PO reference', po.ref],['PO ref source', po.refSource||''],['Vendor', po.vendor||'(missing)'],['Receipt reference(s)', (po.receiptRefs||[]).join(', ')],['Source file', po.fileName||''],['Overall PO status', sum.status],[],
+    ['Status','Rows']];
+  for(const k of SHEET_ORDER) if(k!=='PO_SELECTION') s.push([STATUS[k].label, byStatus[k].length]);
+  s.push(['MISSING (PO lines never received)', sum.missingLines]);
+  s.push(['TOTAL ROWS FOR THIS PO', rows.length]);
+  s.push([]);
+  s.push(['Total ordered (PCS)', sum.orderedPcs+(sum.orderedPcsUnknownLines?' (+'+sum.orderedPcsUnknownLines+' line(s) with undefined UOM excluded)':'')]);
+  s.push(['Total received (PCS)', sum.receivedPcs+(sum.receivedPcsUnknownRows?' (+'+sum.receivedPcsUnknownRows+' row(s) with undefined UOM excluded)':'')]);
+  s.push(['Difference (PCS)', sum.diffPcs]);
+  s.push([]);
+  s.push(['Rows in Odoo Upload File', up.rows.length]);
+  s.push(['Rows still pending review / on hold (not uploaded)', pending.length]);
+  s.push(['Upload validation failures', up.errors]);
+  s.push(['Upload validation warnings', up.warnings]);
+  add('Summary', s, [62,40]);
+
+  // Odoo Upload File — columns A–D keep v1 positions (Barcode, Qty, Qty in Pieces, Expiry); extra columns after.
+  const u=[['Barcode','Qty (Odoo UOM)','Qty in Pieces','Expiry Date','Odoo UOM','Possible Duplicate?','Item (reference only)','Source row No.','PO Ref','Receipt Ref']];
+  for(const x of up.rows) u.push([x.barcode, x.qty, '', x.expiry, x.uom, x.possibleDuplicate?'Yes':'', x.item, x.no, x.poRef||'', x.receiptRef||'']);
+  add('Odoo Upload File', u, [18,14,12,14,12,16,48,10,12,16]);
+  add('Upload Validation', [['Check','Result','Detail'], ...up.checks.map(c=>[c.check,c.result,c.detail])], [52,10,90]);
+  add('Receiving Detail', [DETAIL_H, ...rows.map(detailRow)], DETAIL_W);
+
+  // PO Lines — every original line kept for traceability; identical-group quantities are NOT allocated to lines.
+  const pl=[['PO Ref','File Row','Line Id','Barcode','Internal Ref','Product','Odoo UOM (Allowed Uom)','Ordered Qty','Pieces per Unit','Ordered (PCS)','Receipt Ref','Receiving Group','Group Lines','Group Ordered','Group Received (Odoo UOM)','Group Difference','Received Allocation','Line Status']];
+  for(const t of ((ev.targetsByPo&&ev.targetsByPo.get(poId))||[])){
+    const g=ev.groups.get(t.id); const trs=rows.filter(r=>r.targetId===t.id);
+    const st = !trs.length ? (missing.some(m=>m.line.id===t.id)?'MISSING':'') : [...new Set(trs.map(r=>r.statusLabel))].join(' / ');
+    for(const l of t.lines){ const ou=odooUnit(l, ev.defs); const q=toNum(l.qty);
+      pl.push([po.ref, l.row, l.id, l.barcode??'', l.internalRef||'', l.item, l.uom||'', l.qty??'', ou?ou.pcs:'(undefined UOM)', ou&&q!==null?round6(q*ou.pcs):'', l.receiptRef||'',
+        t.isGroup?t.id:'', t.lines.length, t.qty??'', g&&g.known?g.total:(g?'(pending UOM)':0), g&&g.known&&t.qty!==null?round6(g.total-t.qty):(g?'':(t.qty!==null?-t.qty:'')),
+        t.isGroup?'not allocated (identical group)':'—', st]); }
+  }
+  add('PO Lines', pl, [12,8,16,16,12,44,14,10,10,10,16,16,8,10,12,10,26,30]);
+  add('Needs Review', [DETAIL_H, ...pending.map(detailRow)], DETAIL_W);
+
+  const c=[['Action in Odoo','Product (PO)','PO / Odoo Barcode','Physical Barcode','Decision status','Row No.','PO Ref']];
+  for(const r of rows){
+    const d=r.it.decisions||{};
+    if(r.caseStatus==='ADD_BC'||r.caseStatus==='ADD_BC_QTY')
+      c.push(['Add physical barcode as ADDITIONAL barcode', r.line.item, normBC(r.line.barcode), normBC(r.it.physicalBC), d.barcode==='additional'?'Confirmed':(d.barcode==='hold'?'On hold':'Pending'), r.no, po.ref]);
+    if(r.caseStatus==='NP_EX'||r.caseStatus==='NP_EX_QTY')
+      c.push([d.barcode==='exchange'?'EXCHANGE barcode on existing product':(d.barcode==='new_product'?'Create NEW PRODUCT':'Decide: NEW PRODUCT or EXCHANGE barcode'), r.line.item, normBC(r.line.barcode), normBC(r.it.physicalBC), d.barcode==='exchange'||d.barcode==='new_product'?'Confirmed':(d.barcode==='hold'?'On hold':'Pending'), r.no, po.ref]);
+    if(r.status==='EXTRA') c.push(['Check / create product (not on PO)', r.it.item, '', normBC(r.it.physicalBC), 'Not uploaded', r.no, po.ref]);
+  }
+  add('Odoo Changes Required', c, [44,48,18,18,16,8,12]);
+  for(const k of SHEET_ORDER){
+    if(k==='PO_SELECTION') continue;
+    if(!byStatus[k].length && k!=='READY' && k!=='EXTRA') continue;
+    add(STATUS[k].sheet, [DETAIL_H, ...byStatus[k].map(detailRow)], DETAIL_W);
+  }
+  const m=[['Product','PO Barcode','PO UOM','PO Qty Ordered','Ordered (PCS)','Original Lines','Status','Reason','Required Action']];
+  for(const x of missing){ const ou=odooUnit(x.line, ev.defs); const q=toNum(x.line.qty);
+    m.push([x.line.item, x.line.barcode??'', x.line.uom||'', x.line.qty??'', ou&&q!==null?round6(q*ou.pcs):'', x.line.lines.map(l=>'row '+l.row+': '+l.qty).join('; '), x.label, x.reason, x.action]); }
+  add('missing', m, [48,18,12,14,12,30,10,60,50]);
+  add('UOM Definitions Used', uomDefinitionsUsedAoa(ev, rows), [22,30,12,10,16,12,60]);
+  const issues=ev.poIssues.filter(x=>x.startsWith('PO '+po.ref+':')), info=(ev.poInfo||[]).filter(x=>x.startsWith('PO '+po.ref+':'));
+  if(issues.length||info.length) add('PO data notes', [['Type','Note'], ...issues.map(x=>['Issue',x]), ...info.map(x=>['Info',x])], [8,140]);
+  return wb;
+}
+// Backward-compatible name: single-PO workbook (first PO).
+function buildWorkbook(XLSX, state, ev, up, poId){ return buildPoWorkbook(XLSX, state, ev, poId||(ev.pos[0]&&ev.pos[0].poId)); }
+
+// Cross-PO checks for the master workbook.
+function crossValidate(ev){
+  const checks=[];
+  const poIds=new Set(ev.pos.map(p=>p.poId));
+  const inPo=ev.rows.filter(r=>r.poId && poIds.has(r.poId)), unassigned=ev.rows.filter(r=>!r.poId);
+  const nos=new Map(); for(const r of ev.rows) nos.set(r.no,(nos.get(r.no)||0)+1);
+  checks.push({check:'Every received row is in exactly one PO workbook or in Unassigned', result:(inPo.length+unassigned.length===ev.rows.length && [...nos.values()].every(n=>n===1))?'PASS':'FAIL', detail:inPo.length+' in PO workbooks + '+unassigned.length+' unassigned = '+ev.rows.length+' rows'});
+  const all=buildUpload(ev); const per=ev.pos.map(p=>buildUpload(ev,p.poId));
+  const perNos=per.flatMap(u=>u.rows.map(x=>x.no));
+  const conserved = perNos.length===all.rows.length && new Set(perNos).size===perNos.length && all.rows.every(x=>perNos.includes(x.no));
+  checks.push({check:'Upload rows across all PO workbooks = shipment eligible rows (no duplicates, no losses)', result:conserved?'PASS':'FAIL', detail:perNos.length+' per-PO upload rows vs '+all.rows.length+' eligible rows'});
+  const failing=ev.pos.map((p,i)=>({p,u:per[i]})).filter(x=>x.u.errors);
+  checks.push({check:'Per-PO upload validation', result:failing.length?'FAIL':'PASS', detail:failing.length?failing.map(x=>x.p.ref+': '+x.u.errors+' failed check(s)').join(' | '):'all POs pass'});
+  const bcPos=new Map(); per.forEach((u,i)=>u.rows.forEach(x=>{ if(!bcPos.has(x.barcode)) bcPos.set(x.barcode,new Set()); bcPos.get(x.barcode).add(ev.pos[i].ref); }));
+  const shared=[...bcPos].filter(([,s])=>s.size>1);
+  checks.push({check:'Same barcode uploaded under more than one PO', result:shared.length?'WARN':'PASS', detail:shared.length?shared.map(([b,s])=>b+' ('+[...s].join(', ')+')').join(' | '):'none'});
+  const noVendor=ev.pos.filter(p=>!String(p.vendor||'').trim());
+  checks.push({check:'POs without a vendor', result:noVendor.length?'WARN':'PASS', detail:noVendor.length?noVendor.map(p=>p.ref).join(', '):'none'});
+  checks.push({check:'Rows waiting for a PO choice (not in any PO workbook)', result:unassigned.filter(r=>r.status==='PO_SELECTION').length?'WARN':'PASS', detail:unassigned.filter(r=>r.status==='PO_SELECTION').map(r=>'#'+r.no).join(', ')||'none'});
+  return {checks, errors:checks.filter(c=>c.result==='FAIL').length, warnings:checks.filter(c=>c.result==='WARN').length, perPoUploads:per};
+}
+
+function buildMasterWorkbook(XLSX, state, ev){
+  const wb=XLSX.utils.book_new();
+  const add=(name,aoa,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=widths.map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
+  const sums=ev.pos.map(p=>poSummary(ev,p));
+  const cv=crossValidate(ev);
+  const H=['PO Ref','Vendor','Receipt Ref(s)','PO Lines','Receiving Groups','Total Ordered (PCS)','Total Received (PCS)','Difference (PCS)','PCS excluded (undefined UOM lines/rows)','Ready Lines','Quantity Mismatch Lines','Missing Lines','Extra / Not-on-PO Rows','UOM Reviews','Weight / Spec Holds','Other Unresolved Reviews','Rows in Upload','Overall PO Status'];
+  const a=[[(state.shipmentName||'Box for Less')+' — MASTER SHIPMENT RECONCILIATION'],['One row per PO. PCS totals include deterministic conversions only; quantities are never combined across POs.'],[],H];
+  for(const s of sums) a.push([s.ref, s.vendor||'(missing)', s.receiptRefs.join(', '), s.lines, s.targets, s.orderedPcs, s.receivedPcs, s.diffPcs, s.orderedPcsUnknownLines+' / '+s.receivedPcsUnknownRows, s.readyLines, s.qtyMismatchLines, s.missingLines, s.extras, s.uomReviews, s.weightHolds, s.otherUnresolved, s.uploadRows, s.status]);
+  const T=k=>round6(sums.reduce((x,s)=>x+(typeof s[k]==='number'?s[k]:0),0));
+  a.push(['TOTAL','','',T('lines'),T('targets'),T('orderedPcs'),T('receivedPcs'),T('diffPcs'),'',T('readyLines'),T('qtyMismatchLines'),T('missingLines'),T('extras'),T('uomReviews'),T('weightHolds'),T('otherUnresolved'),T('uploadRows'),'']);
+  const unassigned=ev.rows.filter(r=>!r.poId);
+  a.push([]); a.push(['Unassigned rows (PO choice pending or extra with no PO)', unassigned.length]);
+  a.push(['Cross-PO validation', cv.errors?cv.errors+' FAIL':'PASS'+(cv.warnings?' ('+cv.warnings+' warning(s))':'')]);
+  add('PO Summary', a, [14,22,18,8,10,12,12,12,14,8,10,8,10,8,10,10,10,24]);
+  add('Unassigned', [DETAIL_H, ...unassigned.map(detailRow)], DETAIL_W);
+  add('Cross-PO Validation', [['Check','Result','Detail'], ...cv.checks.map(c=>[c.check,c.result,c.detail])], [62,10,90]);
+  add('All Receiving', [DETAIL_H, ...ev.rows.map(detailRow)], DETAIL_W);
+  add('UOM Definitions Used', uomDefinitionsUsedAoa(ev, ev.rows), [22,30,12,10,16,12,60]);
+  if(ev.poIssues.length||(ev.poInfo||[]).length) add('PO data notes', [['Type','Note'], ...ev.poIssues.map(x=>['Issue',x]), ...(ev.poInfo||[]).map(x=>['Info',x])], [8,140]);
+  return wb;
+}
+
+// All output files for the shipment: N per-PO workbooks + 1 master. Names are filesystem-safe and unique.
+function buildAllOutputs(XLSX, state, ev){
+  const base=sanitizeFileName(state.shipmentName||'shipment');
+  const used=new Set(), files=[];
+  const uniq=n=>{ let x=n, i=2; while(used.has(x.toLowerCase())){ x=n.replace(/\.xlsx$/,'')+'_'+(i++)+'.xlsx'; } used.add(x.toLowerCase()); return x; };
+  for(const p of ev.pos) files.push({kind:'po', poId:p.poId, ref:p.ref, name:uniq(base+'_'+sanitizeFileName(p.ref)+'_reconciliation.xlsx'), wb:buildPoWorkbook(XLSX,state,ev,p.poId)});
+  files.push({kind:'master', name:uniq(base+'_MASTER_reconciliation.xlsx'), wb:buildMasterWorkbook(XLSX,state,ev)});
+  const cv=crossValidate(ev);
+  return {files, cross:cv, summaries:ev.pos.map(p=>poSummary(ev,p))};
+}
+function buildZip(JSZip, XLSX, outputs){
+  const zip=new JSZip();
+  for(const f of outputs.files) zip.file(f.name, XLSX.write(f.wb, {bookType:'xlsx', type:'array'}));
+  return zip;
+}
+
+return { norm, normBC, isFormalBarcode, barcodeQuality, resolveUom, odooUnit, validateUomDefinition, BUILTIN_UOM_RULES, TEMP_SOURCE, specTokens, specCheck, uomKey,
+  parsePoAoa, parseImportAoa, rowKey, buildPoIndex, matchToPO, buildPoDrafts, addPo, findPoByRef, resolvePoRef, shipmentView, buildTargets, lineIdentityKey, locate,
+  setRowPo, setRowMatch, splitItem, canUndoSplit, undoSplit, planReimport, applyReimport, removePo, extractInternalRef, fileStem, sanitizeFileName, computeConversion, evaluate, buildUpload, buildWorkbook,
+  buildPoWorkbook, buildMasterWorkbook, buildAllOutputs, buildZip, crossValidate, poSummary, PO_STATUS_ORDER,
+  migrateSession, sessionSnapshot, definitionsToOffer, normUomText,
+  lineLabel, decisionText, fmtDate, toNum, STATUS };
+})();
+if(typeof module!=='undefined' && module.exports) module.exports=ShipmentEngine;
+</script>
+
+<script id="ui">
+(function(){
+const E=ShipmentEngine;
+const STORAGE_KEY='bfl_shipment_manager_v3_session';
+const LEGACY_V2_KEY='bfl_shipment_manager_v2_session'; // read only — never written or deleted
+const DEFS_KEY='bfl_uom_definitions_v1';               // approved permanent UOM definitions, kept across shipments
+let state={version:3, shipmentName:'', pos:[], items:[], nextNo:1, poSeq:0, splitArchive:{}, activePoId:null};
+const ui={statusFilter:null, poFilter:'', editingNo:null};
+let uomDefs=[];
+let ev=null;
+let importQueue=[];
+const $=id=>document.getElementById(id);
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ console.warn('storage failed', e); return false; } }
+function poById(id){ return state.pos.find(p=>p.poId===id)||null; }
+function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
+
+// ---------- persistence ----------
+function save(){ lsSet(STORAGE_KEY, JSON.stringify(E.sessionSnapshot(state, uomDefs))); }
+function saveDefs(){ lsSet(DEFS_KEY, JSON.stringify(uomDefs)); }
+function loadDefs(){ try{ const r=lsGet(DEFS_KEY); const d=r?JSON.parse(r):[]; uomDefs=Array.isArray(d)?d:[]; }catch(e){ uomDefs=[]; } }
+function applyLoaded(data, origin){
+  const res=E.migrateSession(data);
+  state=res.state;
+  $('shipmentName').value=state.shipmentName||'';
+  const msgs=[...res.notes];
+  const offer=E.definitionsToOffer(uomDefs, res.uomDefinitionsSnapshot);
+  if(origin==='file' && offer.add.length){
+    const valid=offer.add.filter(d=>!E.validateUomDefinition(d, uomDefs).length);
+    if(valid.length && confirm('This backup contains '+valid.length+' approved UOM definition(s) that are not in this browser:\n'+valid.map(d=>d.label+' = '+d.pcsPerUnit+' PCS ('+d.side+')').join('\n')+'\n\nAdd them to the approved definitions?')){ uomDefs.push(...valid); saveDefs(); }
+  }
+  if(origin==='file' && offer.conflicts.length) msgs.push(offer.conflicts.length+' definition(s) in the backup differ from this browser and were NOT changed: '+offer.conflicts.map(c=>c.incoming.label).join(', '));
+  return msgs;
+}
+function load(){
+  loadDefs();
+  const raw=lsGet(STORAGE_KEY);
+  if(raw){ try{ applyLoaded(JSON.parse(raw),'storage'); return; }catch(e){ console.warn('load failed', e); } }
+  const legacy=lsGet(LEGACY_V2_KEY);
+  if(legacy){ try{ const msgs=applyLoaded(JSON.parse(legacy),'legacy'); if(state.pos.length||state.items.length){ $('poStatus').textContent=msgs.join(' '); save(); } }catch(e){ console.warn('legacy load failed', e); } }
+}
+$('shipmentName').addEventListener('input', e=>{ state.shipmentName=e.target.value; save(); });
+
+// ---------- modal ----------
+function openModal(html){ $('modal').innerHTML=html; $('modalBack').classList.add('show'); }
+function closeModal(){ $('modalBack').classList.remove('show'); $('modal').innerHTML=''; }
+
+// ---------- files ----------
+function setupDropzone(dzId, inputId, textId, onFiles){
+  const dz=$(dzId), input=$(inputId), text=$(textId);
+  input.addEventListener('click', e=>e.stopPropagation());
+  input.addEventListener('change', e=>{ const fs=[...(e.target.files||[])]; if(fs.length) handle(fs); e.target.value=''; });
+  dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.style.borderColor='var(--accent)'; });
+  dz.addEventListener('dragleave', e=>{ e.preventDefault(); dz.style.borderColor=''; });
+  dz.addEventListener('drop', e=>{ e.preventDefault(); dz.style.borderColor=''; const fs=[...(e.dataTransfer.files||[])]; if(fs.length) handle(fs); });
+  function handle(files){ text.innerHTML='<span class="fname">'+files.map(f=>esc(f.name)).join(', ')+'</span>'; onFiles(files); }
+}
+function readAoa(file){
+  return new Promise((resolve,reject)=>{ const r=new FileReader();
+    r.onload=e=>{ try{ const wb=XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; resolve(XLSX.utils.sheet_to_json(ws,{header:1, defval:null, raw:true})); }catch(err){ reject(err); } };
+    r.onerror=()=>reject(r.error); r.readAsArrayBuffer(file); });
+}
+
+// ---------- PO import (one dialog per PO) ----------
+setupDropzone('dzPO','filePO','dzPOText', async files=>{
+  for(const f of files){
+    try{ const aoa=await readAoa(f); const parsed=E.parsePoAoa(aoa);
+      if(!parsed.lines.length){ alert(f.name+': no PO lines found.'); continue; }
+      for(const d of E.buildPoDrafts(parsed, f.name)) importQueue.push({draft:d, mode:parsed.mode}); }
+    catch(err){ alert('Could not read '+f.name+': '+err.message); }
+  }
+  nextImport();
+});
+function nextImport(){
+  if(!importQueue.length){ closeModal(); renderAll(); return; }
+  const q=importQueue[0];
+  const existing=!q.draft.conflict && E.findPoByRef(state, q.draft.ref);
+  if(existing) showReimport(existing, q); else showImport(q);
+}
+function draftPreview(draft){
+  const tmp={poId:'TMP', ref:draft.ref, lines:draft.lines.map((l,i)=>({...l, id:'TMP-L'+(i+1), poId:'TMP'}))};
+  const targets=E.buildTargets(tmp, uomDefs);
+  const bcCount=new Map(); targets.forEach(t=>{ const b=E.normBC(t.barcode); if(b) bcCount.set(b,(bcCount.get(b)||0)+1); });
+  return { groups:targets.filter(t=>t.isGroup).length, separateDupBarcodes:[...bcCount].filter(([,n])=>n>1).length,
+    uoms:[...new Set(draft.lines.map(l=>l.uom||'(blank)'))], undefinedUom:draft.lines.filter(l=>!E.odooUnit(l,uomDefs)).length };
+}
+function showImport(q){
+  const d=q.draft, p=draftPreview(d);
+  const vendors=[...new Set([...state.pos.map(x=>x.vendor), ...d.vendorOptionsInFile].filter(Boolean))];
+  const refField = d.conflict
+    ? `<select id="impRef"><option value="">— choose —</option><option value="${esc(d.conflict.column)}">${esc(d.conflict.column)} (PO column in the file)</option><option value="${esc(d.conflict.filename)}">${esc(d.conflict.filename)} (file name)</option></select>
+       <div class="small" style="color:var(--bad);">The PO column says <b>${esc(d.conflict.column)}</b> but the file name says <b>${esc(d.conflict.filename)}</b>. Confirm which is correct.</div>`
+    : `<input type="text" id="impRef" value="${esc(d.ref)}"><div class="small">Source: ${esc(d.refSource==='column'?'PO column in the file':'file name')} — edit if needed.</div>`;
+  openModal(`<h3>Import PO — ${esc(d.fileName)}</h3>
+    <div class="row"><div class="field"><label>PO reference</label>${refField}</div>
+    <div class="field"><label>Vendor (required)</label><input type="text" id="impVendor" list="impVendors" value="${esc(d.vendor)}"><datalist id="impVendors">${vendors.map(v=>`<option value="${esc(v)}">`).join('')}</datalist></div></div>
+    <ul class="small" style="margin:10px 0;">
+      <li>Lines: <b>${d.lines.length}</b> · columns read by ${esc(q.mode)}</li>
+      <li>Receipt reference(s): <b>${esc(d.receiptRefs.join(', ')||'—')}</b> (kept separately — not the PO number)</li>
+      <li>Odoo UOMs: ${esc(p.uoms.join(', '))} · lines with an undefined UOM: <b>${p.undefinedUom}</b></li>
+      <li>Identical duplicate-line groups: <b>${p.groups}</b> · barcodes shared by genuinely different lines: <b>${p.separateDupBarcodes}</b></li>
+      ${d.notes.map(n=>`<li style="color:var(--warn);">${esc(n)}</li>`).join('')}
+    </ul>
+    <div id="impMsg" style="color:var(--bad);font-size:13px;"></div>
+    <div class="row" style="margin-top:10px;"><button id="impAddBtn">Add PO to shipment</button><button class="secondary" id="impSkipBtn">Skip this file</button></div>`);
+  $('impSkipBtn').onclick=()=>{ importQueue.shift(); nextImport(); };
+  $('impAddBtn').onclick=()=>{
+    const ref=$('impRef').value.trim(), vendor=$('impVendor').value.trim();
+    if(!ref){ $('impMsg').textContent='Choose / enter the PO reference.'; return; }
+    const ex=E.findPoByRef(state, ref);
+    if(ex){ q.draft={...q.draft, ref, conflict:null}; showReimport(ex, q); return; }
+    const r=E.addPo(state, d, {ref, vendor});
+    if(r.errors){ $('impMsg').textContent=r.errors.join(' · '); return; }
+    importQueue.shift(); save(); renderAll(); nextImport();
+  };
+}
+function showReimport(po, q){
+  const plan=E.planReimport(state, po.poId, q.draft, uomDefs);
+  const li=(arr,f)=>arr.slice(0,25).map(x=>`<li>${esc(f(x))}</li>`).join('')+(arr.length>25?`<li>… ${arr.length-25} more</li>`:'');
+  openModal(`<h3>Re-import PO ${esc(po.ref)} — preview</h3>
+    <p class="small">Nothing changes until you confirm. Received rows are kept; rows whose line disappears go to review — they are never dropped.</p>
+    <ul class="small">
+      <li>Lines: ${plan.oldCount} → <b>${plan.newCount}</b> · unchanged ${plan.unchanged}</li>
+      <li>Added: <b>${plan.added.length}</b><ul>${li(plan.added,l=>l.item+' — '+l.qty+' '+(l.uom||''))}</ul></li>
+      <li>Removed: <b>${plan.removed.length}</b><ul>${li(plan.removed,l=>l.item+' — '+l.qty+' '+(l.uom||''))}</ul></li>
+      <li>Changed: <b>${plan.changed.length}</b><ul>${li(plan.changed,c=>c.old.item+': '+c.fields.join(', '))}</ul></li>
+      <li>Received rows that lose their line (→ review): <b>${plan.orphanRows.length}</b><ul>${li(plan.orphanRows,o=>'#'+o.no+' '+o.item)}</ul></li>
+      <li>Receipt refs: ${esc(plan.receiptRefs.from.join(', ')||'—')} → <b>${esc(plan.receiptRefs.to.join(', ')||'—')}</b></li>
+      ${plan.vendorChange?`<li>Vendor in file: <b>${esc(plan.vendorChange.to)}</b> (current: ${esc(plan.vendorChange.from)}) — <label style="text-transform:none;"><input type="checkbox" id="reimpVendor"> use the vendor from the file</label></li>`:''}
+    </ul>
+    <div class="row" style="margin-top:10px;"><button id="reimpOkBtn">Confirm re-import</button><button class="secondary" id="reimpCancelBtn">Cancel — change nothing</button></div>`);
+  $('reimpCancelBtn').onclick=()=>{ importQueue.shift(); nextImport(); };
+  $('reimpOkBtn').onclick=()=>{
+    const useV=$('reimpVendor')&&$('reimpVendor').checked;
+    const res=E.applyReimport(state, po.poId, q.draft, plan, {vendor:useV?plan.vendorChange.to:null});
+    $('poStatus').textContent='Re-imported PO '+po.ref+': +'+plan.added.length+' −'+plan.removed.length+' ~'+plan.changed.length+' lines; '+res.remapped+' confirmation(s) kept, '+res.orphaned+' row(s) sent to review.';
+    importQueue.shift(); save(); renderAll(); nextImport();
+  };
+}
+
+// ---------- PO list ----------
+function renderPoTable(){
+  $('poTbody').innerHTML = state.pos.length ? state.pos.map(p=>{ const s=E.poSummary(ev,p);
+    return `<tr><td><b>${esc(p.ref)}</b><div class="small">${esc(p.refSource||'')}</div></td>
+      <td>${p.vendor?esc(p.vendor):'<span class="badge bad">vendor missing</span>'}</td>
+      <td>${esc((p.receiptRefs||[]).join(', '))}</td><td class="small">${esc(p.fileName||'')}${(p.history||[]).length?'<div>re-imported '+p.history.length+'×</div>':''}</td>
+      <td class="num">${p.lines.length}</td><td class="num">${s.orderedPcs}${s.orderedPcsUnknownLines?'<div class="small">+'+s.orderedPcsUnknownLines+' undefined UOM</div>':''}</td>
+      <td class="num">${s.rows}</td><td><span class="badge ${poStatusCls(s.status)}">${esc(s.status)}</span></td>
+      <td><button class="row-btn edit" data-poact="vendor" data-poid="${p.poId}">edit vendor</button><button class="row-btn edit" data-poact="ref" data-poid="${p.poId}">edit ref</button><button class="row-btn del" data-poact="remove" data-poid="${p.poId}">remove</button></td></tr>`; }).join('')
+    : '<tr><td colspan="9" class="small">No PO loaded yet.</td></tr>';
+}
+function poStatusCls(s){ return s==='COMPLETE'?'ok':(s==='NEEDS REVIEW'?'bad':(s==='NOT STARTED'?'info':'warn')); }
+$('poTbody').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-poact]'); if(!b) return;
+  const p=poById(b.dataset.poid); if(!p) return;
+  if(b.dataset.poact==='vendor'){ const v=prompt('Vendor for PO '+p.ref+':', p.vendor||''); if(v===null) return; if(!v.trim()){ alert('Vendor is required.'); return; } p.vendor=v.trim(); }
+  else if(b.dataset.poact==='ref'){ const v=prompt('PO reference (currently '+p.ref+'):', p.ref); if(v===null) return; const t=v.trim(); if(!t){ alert('PO reference is required.'); return; }
+    const ex=E.findPoByRef(state,t); if(ex && ex.poId!==p.poId){ alert('PO '+t+' is already loaded.'); return; } p.ref=t; p.refSource='edited'; }
+  else if(b.dataset.poact==='remove'){ const n=state.items.filter(it=>it.poId===p.poId).length;
+    if(!confirm('Remove PO '+p.ref+'? '+n+' received row(s) linked to it are kept and will need a PO again.')) return; E.removePo(state,p.poId); if(ui.poFilter===p.poId) ui.poFilter=''; if(state.activePoId===p.poId) state.activePoId=null; }
+  save(); renderAll();
+});
+
+// ---------- UOM definitions ----------
+function renderUom(){
+  const rows=E.BUILTIN_UOM_RULES.map(b=>`<tr><td><span class="badge info">built-in</span></td><td>${esc(b.label)}</td><td></td><td>${esc(b.side)}</td><td></td><td></td><td></td><td></td></tr>`);
+  for(const d of uomDefs) rows.push(`<tr><td><span class="badge ok">approved</span></td><td><b>${esc(d.label)}</b></td><td class="num">${esc(d.pcsPerUnit)}</td><td>${esc(d.side)}</td><td>${esc(d.approvedBy||'')}</td><td>${esc(d.approvedOn||'')}</td><td class="small">${esc(d.note||'')}</td><td><button class="row-btn del" data-defkey="${esc(d.key)}">remove</button></td></tr>`);
+  $('uomTbody').innerHTML=rows.join('');
+}
+$('uomAddBtn').addEventListener('click', ()=>{
+  const def={ key:'D'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), label:$('uomLabel').value.trim().replace(/\s+/g,' '), pcsPerUnit:$('uomPcs').value===''?null:Number($('uomPcs').value),
+    side:$('uomSide').value, approvedBy:$('uomBy').value.trim(), approvedOn:today(), note:$('uomNote').value.trim() };
+  const errs=E.validateUomDefinition(def, uomDefs);
+  if(errs.length){ $('uomMsg').textContent=errs.join(' · '); return; }
+  uomDefs.push(def); saveDefs(); $('uomMsg').textContent='';
+  ['uomLabel','uomPcs','uomBy','uomNote'].forEach(id=>$(id).value=''); $('uomSide').value='';
+  renderAll();
+});
+$('uomTbody').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-defkey]'); if(!b) return;
+  const d=uomDefs.find(x=>x.key===b.dataset.defkey); if(!d) return;
+  if(!confirm('Remove the approved definition "'+d.label+'" = '+d.pcsPerUnit+' PCS? Rows that rely on it go back to UOM NEEDS REVIEW.')) return;
+  uomDefs=uomDefs.filter(x=>x.key!==d.key); saveDefs(); renderAll();
+});
+$('uomExportBtn').addEventListener('click', ()=>{
+  download(new Blob([JSON.stringify({type:'bfl-uom-definitions', version:1, exportedAt:new Date().toISOString(), definitions:uomDefs}, null, 2)], {type:'application/json'}), 'uom_definitions.json');
+});
+$('uomImportInput').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=x=>{ try{ const data=JSON.parse(x.target.result); const incoming=Array.isArray(data)?data:(data.definitions||[]);
+      const offer=E.definitionsToOffer(uomDefs, incoming); const valid=offer.add.filter(d=>!E.validateUomDefinition(d, uomDefs).length);
+      if(!valid.length){ alert('Nothing new to import.'+(offer.conflicts.length?' '+offer.conflicts.length+' definition(s) differ from this browser and were not changed.':'')); return; }
+      if(confirm('Add '+valid.length+' approved definition(s)?\n'+valid.map(d=>d.label+' = '+d.pcsPerUnit+' PCS ('+d.side+')').join('\n')+(offer.conflicts.length?'\n\n'+offer.conflicts.length+' conflicting definition(s) will NOT be changed.':''))){ uomDefs.push(...valid); saveDefs(); renderAll(); } }
+    catch(err){ alert('Could not read that definitions file.'); } e.target.value=''; };
+  r.readAsText(f);
+});
+
+// ---------- dashboard ----------
+function rowsInScope(){ if(!ui.poFilter) return ev.rows; if(ui.poFilter==='__unassigned__') return ev.rows.filter(r=>!r.poId); return ev.rows.filter(r=>r.poId===ui.poFilter); }
+function missingInScope(){ if(!ui.poFilter) return ev.missing; if(ui.poFilter==='__unassigned__') return []; return ev.missing.filter(m=>m.poId===ui.poFilter); }
+function renderDashboard(){
+  const tiles=state.pos.map(p=>{ const s=E.poSummary(ev,p); return `<div class="stat po-tile ${ui.poFilter===p.poId?'active':''}" data-po="${p.poId}"><div class="l"><b>${esc(p.ref)}</b> · ${esc(p.vendor||'vendor missing')}</div><div class="n" style="font-size:15px;">${esc(s.status)}</div><div class="l">${s.rows} rows · ${s.uploadRows} in upload · ${s.missingLines} missing</div></div>`; });
+  const un=ev.rows.filter(r=>!r.poId).length;
+  if(state.pos.length>1 || un) tiles.push(`<div class="stat ${un?'alert':''} ${ui.poFilter==='__unassigned__'?'active':''}" data-po="__unassigned__"><div class="l"><b>Unassigned</b></div><div class="n">${un}</div><div class="l">PO choice pending / extra with no PO</div></div>`);
+  $('poTiles').innerHTML=tiles.join('');
+  const rows=rowsInScope(), counts={}; for(const k in E.STATUS) counts[k]=0; for(const r of rows) counts[r.status]++;
+  const upload=rows.filter(r=>r.uploadEligible).length, pending=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA').length;
+  const card=(key,n,label,cls)=>`<div class="stat ${cls} ${n?'':'zero'} ${ui.statusFilter===key?'active':''}" data-f="${key}"><div class="n">${n}</div><div class="l">${esc(label)}</div></div>`;
+  let html=card('__all__', rows.length, 'Total checked in', 'all')+card('__upload__', upload, 'In Odoo upload (validated)', '')+card('__pending__', pending, 'Pending review / on hold', 'review');
+  for(const k of Object.keys(E.STATUS).sort((a,b)=>E.STATUS[a].order-E.STATUS[b].order)){ const s=E.STATUS[k]; html+=card(k, counts[k], s.label, s.cls==='ok'?'':(s.cls==='bad'?'alert':'review')); }
+  html+=card('MISSING', missingInScope().length, 'MISSING (PO lines not received)', 'alert');
+  $('dashGrid').innerHTML=html;
+  const extra=ev.rows.filter(r=>r.status==='EXTRA');
+  if(extra.length){ $('notFoundBanner').classList.add('show'); $('notFoundList').innerHTML=extra.map(r=>`<li>${esc(r.it.item)} ${r.it.physicalBC?'— barcode '+esc(r.it.physicalBC):''} ${r.poRef?'— on PO '+esc(r.poRef):'— no PO'}</li>`).join(''); }
+  else $('notFoundBanner').classList.remove('show');
+}
+$('poTiles').addEventListener('click', e=>{ const t=e.target.closest('[data-po]'); if(!t) return; ui.poFilter = ui.poFilter===t.dataset.po ? '' : t.dataset.po; renderAll(); });
+$('dashGrid').addEventListener('click', e=>{ const t=e.target.closest('[data-f]'); if(!t) return; const f=t.dataset.f; ui.statusFilter=(f==='__all__')?null:(ui.statusFilter===f?null:f); renderAll(); });
+function renderPoIssues(){
+  const all=[...ev.poIssues.map(x=>'⚠ '+x), ...(ev.poInfo||[]).map(x=>'ℹ '+x)];
+  if(all.length){ $('poIssueBanner').classList.add('show'); $('poIssueList').innerHTML=all.slice(0,300).map(x=>'<li>'+esc(x)+'</li>').join(''); }
+  else $('poIssueBanner').classList.remove('show');
+}
+function renderPoOptions(){
+  const opt=(v,l,sel)=>`<option value="${esc(v)}" ${sel?'selected':''}>${esc(l)}</option>`;
+  if(state.activePoId && !poById(state.activePoId)) state.activePoId=null;
+  $('qaPo').innerHTML=opt('','Auto (determine PO)',!state.activePoId)+state.pos.map(p=>opt(p.poId, p.ref+' — '+(p.vendor||'vendor missing'), state.activePoId===p.poId)).join('');
+  if(ui.poFilter && ui.poFilter!=='__unassigned__' && !poById(ui.poFilter)) ui.poFilter='';
+  $('poFilter').innerHTML=opt('','All POs',!ui.poFilter)+state.pos.map(p=>opt(p.poId,p.ref+' — '+(p.vendor||''),ui.poFilter===p.poId)).join('')+opt('__unassigned__','Unassigned',ui.poFilter==='__unassigned__');
+  const names=new Set(); state.pos.forEach(p=>p.lines.forEach(l=>names.add(l.item)));
+  $('poNames').innerHTML=[...names].map(n=>`<option value="${esc(n)}">`).join('');
+}
+$('poFilter').addEventListener('change', e=>{ ui.poFilter=e.target.value; renderAll(); });
+
+// ---------- check-in ----------
+const QA=['qaItem','qaPhysBC','qaPhysQty','qaPhysUom','qaPhysPieces','qaPhysSpec','qaExpiry','qaNotes'];
+$('qaPo').addEventListener('change', e=>{ state.activePoId=e.target.value||null; save(); updateQaPreview(); });
+function updateQaPreview(sourceId){
+  const itemField=$('qaItem'), item=itemField.value.trim(), physBC=$('qaPhysBC').value.trim(), badge=$('qaStatusBadge');
+  if(sourceId==='qaItem') itemField.dataset.auto='0';
+  const clear=()=>{ ['qaPoRef','qaPoBC','qaPoQty','qaPoUom'].forEach(id=>$(id).value=''); };
+  if((!item && !physBC) || !state.pos.length){ badge.textContent='—'; badge.className='badge'; clear(); return; }
+  const tmp={pos:state.pos, items:[{no:0, item, physicalBC:physBC, physicalQty:$('qaPhysQty').value===''?null:Number($('qaPhysQty').value), physicalUom:$('qaPhysUom').value.trim()||null, poId:$('qaPo').value||null, poSource:$('qaPo').value?'selected':null, decisions:{}}]};
+  const r=E.evaluate(tmp, uomDefs).rows[0];
+  const l=r.line || r.match.line || (r.poCandidates[0]&&r.poCandidates[0].target) || null;
+  if(r.line){ badge.textContent='PO '+(r.poRef||'')+' — '+r.match.via+(r.it.physicalQty!==null&&r.it.physicalQty!==undefined?' — '+r.statusLabel:''); badge.className='badge ok'; }
+  else { badge.textContent=r.statusLabel+(r.poRef?' — PO '+r.poRef:'')+' — '+(r.reasons[0]||r.match.via); badge.className='badge '+(r.status==='EXTRA'?'bad':'warn'); }
+  if(l){ $('qaPoRef').value=r.poRef||(l.poRef||''); $('qaPoBC').value=E.normBC(l.barcode); $('qaPoQty').value=l.qty??''; $('qaPoUom').value=l.uom||'';
+    if(r.line && r.match.confidence==='certain' && (itemField.value.trim()==='' || itemField.dataset.auto==='1')){ itemField.value=r.line.item; itemField.dataset.auto='1'; } }
+  else { clear(); if(itemField.dataset.auto==='1'){ itemField.value=''; itemField.dataset.auto='0'; } }
+}
+['qaItem','qaPhysBC','qaPhysQty','qaPhysUom'].forEach(id=>$(id).addEventListener('input', ()=>updateQaPreview(id)));
+function resetQa(){
+  QA.forEach(id=>$(id).value=''); $('qaItem').dataset.auto='0';
+  ['qaPoRef','qaPoBC','qaPoQty','qaPoUom'].forEach(id=>$(id).value='');
+  $('qaStatusBadge').textContent='—'; $('qaStatusBadge').className='badge';
+  ui.editingNo=null; $('editBanner').classList.remove('show'); $('addItemBtn').textContent='Add item';
+}
+$('cancelEditBtn').addEventListener('click', resetQa);
+$('addItemBtn').addEventListener('click', ()=>{
+  const item=$('qaItem').value.trim();
+  if(!item){ alert('Enter a product name.'); return; }
+  const v=id=>$(id).value.trim()||null;
+  const poId=$('qaPo').value||null;
+  const rec={ item, physicalBC:v('qaPhysBC'), physicalQty:$('qaPhysQty').value!==''?Number($('qaPhysQty').value):null,
+    physicalUom:v('qaPhysUom'), physicalPieces:$('qaPhysPieces').value!==''?Number($('qaPhysPieces').value):null, physicalSpec:v('qaPhysSpec'),
+    expiry:v('qaExpiry'), notes:v('qaNotes'), poId, poSource:poId?'selected':null, poRefText:null,
+    manualTargetId:null, manualNotOnPo:false, tempPhysPieces:null, tempPoPieces:null, orphaned:false, decisions:{} };
+  if(ui.editingNo!==null){ const i=state.items.findIndex(it=>it.no===ui.editingNo); if(i>=0) state.items[i]={...rec, no:ui.editingNo}; }
+  else { rec.no=state.nextNo++; state.items.push(rec); }
+  resetQa(); save(); renderAll(); $('qaItem').focus();
+});
+function startEdit(no){
+  const it=state.items.find(x=>x.no===no); if(!it) return;
+  ui.editingNo=no;
+  $('qaItem').value=it.item||''; $('qaPhysBC').value=it.physicalBC??''; $('qaPhysQty').value=it.physicalQty??''; $('qaPhysUom').value=it.physicalUom??'';
+  $('qaPhysPieces').value=it.physicalPieces??''; $('qaPhysSpec').value=it.physicalSpec??''; $('qaExpiry').value=it.expiry??''; $('qaNotes').value=it.notes??'';
+  $('qaPo').value=it.poId&&poById(it.poId)?it.poId:'';
+  $('qaItem').dataset.auto='0'; $('editNo').textContent='#'+no; $('editBanner').classList.add('show'); $('addItemBtn').textContent='Save changes';
+  updateQaPreview(); if($('qaItem').scrollIntoView) $('qaItem').scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+// ---------- bulk import ----------
+function logMsg(msg){ const d=document.createElement('div'); d.textContent=msg; $('log').appendChild(d); }
+setupDropzone('dzImport','fileImport','dzImportText', async files=>{
+  $('log').innerHTML='';
+  for(const f of files){
+    let aoa; try{ aoa=await readAoa(f); }catch(err){ logMsg('Could not read '+f.name); continue; }
+    const res=E.parseImportAoa(aoa);
+    // de-duplication key: the PO value only counts when it came from an import column (as on the new rows)
+    const existing=new Set(state.items.map(it=>E.rowKey({...it, poId:null, poRef: it.poSource==='import-column'&&poById(it.poId) ? poById(it.poId).ref : (it.poRefText||null)})));
+    let added=0, skipped=0, unknownPo=0;
+    for(const rec of res.recs){
+      const k=E.rowKey({...rec, poId:null}); if(existing.has(k)){ skipped++; continue; }
+      const pid=rec.poRef?E.resolvePoRef(state, rec.poRef):null; if(rec.poRef && !pid) unknownPo++;
+      const {poRef, ...rest}=rec;
+      state.items.push({...rest, no:state.nextNo++, poId:pid, poSource:pid?'import-column':null, poRefText:rec.poRef&&!pid?rec.poRef:null,
+        manualTargetId:null, manualNotOnPo:false, tempPhysPieces:null, tempPoPieces:null, orphaned:false, decisions:{}});
+      existing.add(k); added++;
+    }
+    save(); renderAll();
+    logMsg(f.name+': columns read by '+res.mode+'. Imported '+added+' new rows; skipped '+skipped+' already checked in'+(unknownPo?'; '+unknownPo+' row(s) name a PO that is not loaded (→ PO SELECTION REQUIRED)':'')+'.');
+  }
+});
+
+// ---------- reconciliation table ----------
+function decisionHtml(r){
+  let h='';
+  for(const d of r.decisions){
+    if(d.type==='conversion'){
+      h+=`<div class="dec"><label>${esc(d.label)}</label><div class="uom-in">
+        <input type="number" step="any" min="0" placeholder="pcs/phys" data-no="${r.no}" data-uom="phys" value="${d.physPieces??''}" title="Pieces per physical unit">
+        <input type="number" step="any" min="0" placeholder="pcs/Odoo" data-no="${r.no}" data-uom="po" value="${d.poPieces??''}" title="Pieces per Odoo unit">
+        <button data-no="${r.no}" data-act="uom">Apply</button></div>
+        <button class="row-btn edit" data-no="${r.no}" data-act="propose">Propose as permanent definition…</button></div>`;
+      continue;
+    }
+    let opts=d.options.slice();
+    if(d.allLines){ const have=new Set(opts.map(o=>o.v)); for(const t of ev.targets) if(!have.has(t.id)) opts.push({v:t.id,label:E.lineLabel(t)}); }
+    if(!opts.length) continue;
+    const cur=(d.key==='match'||d.key==='po')?'':(d.value??'');
+    h+=`<div class="dec"><label>${esc(d.label)}${d.required&&d.value===null?' ⚠':''}</label><select data-no="${r.no}" data-key="${d.key}">
+      <option value="">— choose —</option>${opts.map(o=>`<option value="${esc(o.v)}" ${o.v===cur?'selected':''}>${esc(o.label)}</option>`).join('')}</select></div>`;
+  }
+  const it=state.items.find(x=>x.no===r.no)||{};
+  if(it.manualTargetId || it.manualNotOnPo) h+=`<div class="dec"><button class="row-btn edit" data-no="${r.no}" data-act="unmatch">↺ undo manual match</button></div>`;
+  if(it.poSource==='user-choice') h+=`<div class="dec"><button class="row-btn edit" data-no="${r.no}" data-act="unpo">↺ undo PO choice</button></div>`;
+  const cls = r.review.startsWith('ON HOLD')?'bad':(r.review.startsWith('PENDING')||r.review==='NOT UPLOADABLE'?'warn':'ok');
+  return `<span class="badge ${cls}">${esc(r.review)}</span>`+(r.uploadEligible?' <span class="badge ok">IN UPLOAD</span>':'')+h;
+}
+function filterLabel(f){ if(f==='__upload__') return 'In Odoo upload'; if(f==='__pending__') return 'Pending review / on hold'; if(f==='MISSING') return 'Missing'; return E.STATUS[f]?E.STATUS[f].label:f; }
+function renderTable(){
+  const tagWrap=$('filterTagWrap');
+  tagWrap.innerHTML = ui.statusFilter ? `<span class="filter-tag">Filtered: ${esc(filterLabel(ui.statusFilter))} <button id="clearFilterBtn">✕</button></span>` : '';
+  if(ui.statusFilter) $('clearFilterBtn').addEventListener('click', ()=>{ ui.statusFilter=null; renderAll(); });
+  const tbody=$('itemsTbody');
+  if(ui.statusFilter==='MISSING'){
+    const ms=missingInScope();
+    $('itemCount').textContent=ev.rows.length+' ('+ms.length+' missing receiving targets shown)';
+    tbody.innerHTML=ms.map(m=>`<tr><td>—</td><td>${esc(m.poRef||'')}</td><td>${esc(m.line.item)}${m.line.isGroup?`<div class="small">identical group: ${m.line.lines.map(l=>l.qty).join(' + ')}</div>`:''}</td><td class="small">—</td><td class="bc">${esc(E.normBC(m.line.barcode))}</td><td>—</td>
+      <td>${esc(m.line.uom)}</td><td>—</td><td class="num">${esc(m.line.qty)}</td><td class="num">0</td><td>—</td><td class="num">0</td><td>—</td>
+      <td><span class="badge bad">MISSING</span></td><td class="small">${esc(m.reason)}</td><td class="small">${esc(m.action)}</td><td>—</td><td></td></tr>`).join('');
+    return;
+  }
+  let rows=rowsInScope();
+  if(ui.statusFilter==='__upload__') rows=rows.filter(r=>r.uploadEligible);
+  else if(ui.statusFilter==='__pending__') rows=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA');
+  else if(ui.statusFilter) rows=rows.filter(r=>r.status===ui.statusFilter);
+  $('itemCount').textContent=ev.rows.length+((ui.statusFilter||ui.poFilter)?' ('+rows.length+' shown)':'');
+  tbody.innerHTML=rows.slice().reverse().map(r=>{
+    const s=E.STATUS[r.status], c=r.conv, it=state.items.find(x=>x.no===r.no)||{};
+    const undo = it.splitGroup && E.canUndoSplit(state,it.splitGroup).ok;
+    return `<tr>
+      <td>${r.no}${it.splitFrom?`<div class="small">split of #${it.splitFrom}</div>`:''}</td>
+      <td>${r.poRef?'<b>'+esc(r.poRef)+'</b>':'<span class="small">none</span>'}<div class="small">${esc(r.poSource||'')}</div>${(r.receiptRefs||[]).length?`<div class="small">${esc(r.receiptRefs.join(', '))}</div>`:''}</td>
+      <td>${esc(r.it.item)}${r.line&&E.norm(r.line.item)!==E.norm(r.it.item)?`<div class="small">PO: ${esc(r.line.item)}</div>`:''}${r.it.physicalSpec?`<div class="small">Spec: ${esc(r.it.physicalSpec)}</div>`:''}</td>
+      <td class="small">${esc(r.match.via)}<br><span class="badge ${r.match.confidence==='certain'||r.match.confidence==='confirmed'?'ok':(r.match.confidence==='none'||r.match.confidence==='confirmed-none'?'bad':'warn')}">${esc(r.match.confidence)}</span></td>
+      <td class="bc">${esc(E.normBC(r.poBC))}${r.line?`<div class="small">${r.formal?'formal':'non-formal'}</div>`:''}</td>
+      <td class="bc">${esc(r.it.physicalBC??'')}</td>
+      <td>${esc(r.poUom||'')}${c.poPieces?`<div class="small">${c.poPieces} pcs</div>`:''}</td>
+      <td>${esc(c.physUom||(r.line?'(same as PO)':''))}${c.physPieces?`<div class="small">${c.physPieces} pcs</div>`:''}</td>
+      <td class="num">${esc(r.poQty??'')}${r.isGroup?`<div class="small">group: ${r.line.lines.map(l=>l.qty).join(' + ')}</div>`:''}${r.group&&r.group.rows.length>1?`<div class="small">received total ${r.group.known?r.group.total:'?'}</div>`:''}</td>
+      <td class="num">${esc(r.it.physicalQty??'')}</td>
+      <td class="num" title="${esc(c.explain||c.source||c.reason)}">${c.factor??'—'}${c.temporary?'<div class="small">temporary</div>':''}</td>
+      <td class="num"><b>${r.odooQty??'—'}</b>${r.odooQty!==null&&r.poUom?`<div class="small">${esc(r.poUom)}</div>`:''}${c.physPcs!==null?`<div class="small">${c.physPcs} PCS</div>`:''}</td>
+      <td>${esc(r.it.expiry||'')}</td>
+      <td><span class="badge ${s.cls}">${esc(r.statusLabel)}</span>${r.caseNo?`<div class="small">case ${r.caseNo}</div>`:''}</td>
+      <td class="small">${esc(r.reasons.join(' · '))}${r.notes.length?`<div>${esc(r.notes.join(' · '))}</div>`:''}</td>
+      <td class="small">${esc(r.actions.join(' · '))}</td>
+      <td>${decisionHtml(r)}</td>
+      <td><button class="row-btn edit" data-no="${r.no}" data-act="edit">edit</button>${state.pos.length>1?`<button class="row-btn edit" data-no="${r.no}" data-act="split">split row</button>`:''}${undo?`<button class="row-btn edit" data-no="${r.no}" data-act="undosplit">undo split</button>`:''}<button class="row-btn del" data-no="${r.no}" data-act="del">remove</button></td>
+    </tr>`;
+  }).join('');
+}
+$('itemsTbody').addEventListener('change', e=>{
+  const el=e.target; if(!el.matches('select[data-key]')) return;
+  const no=Number(el.dataset.no), it=state.items.find(x=>x.no===no); if(!it) return;
+  const key=el.dataset.key, val=el.value;
+  if(key==='po'){ if(!val) return; E.setRowPo(state,no,val); }
+  else if(key==='match'){ if(!val) return; E.setRowMatch(state,no,val); }
+  else { it.decisions=it.decisions||{}; if(val) it.decisions[key]=val; else delete it.decisions[key]; }
+  save(); renderAll();
+});
+$('itemsTbody').addEventListener('click', e=>{
+  const el=e.target.closest('button[data-act]'); if(!el) return;
+  const no=Number(el.dataset.no), act=el.dataset.act, it=state.items.find(x=>x.no===no);
+  if(act==='del'){ if(!confirm('Remove row #'+no+'?')) return; state.items=state.items.filter(x=>x.no!==no); }
+  else if(act==='edit'){ startEdit(no); return; }
+  else if(act==='split'){ showSplit(no); return; }
+  else if(act==='undosplit' && it){ const r=E.undoSplit(state,it.splitGroup); if(r.errors){ alert(r.errors.join('\n')); return; } }
+  else if(act==='unmatch'){ E.setRowMatch(state,no,''); }
+  else if(act==='unpo' && it){ it.poId=null; it.poSource=null; it.manualTargetId=null; }
+  else if(act==='propose' && it){
+    $('uomLabel').value=it.physicalUom||''; $('uomPcs').value=it.tempPhysPieces??''; $('uomSide').value='physical'; $('uomBy').value=''; $('uomNote').value='Proposed from row #'+no;
+    $('uomMsg').textContent='Review the proposed definition and click "Save approved definition" — nothing is saved automatically. Check whether it should apply to the Odoo side too.';
+    if($('uomLabel').scrollIntoView) $('uomLabel').scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  else if(act==='uom' && it){
+    const p=el.parentElement.querySelector('input[data-uom="phys"]').value, q=el.parentElement.querySelector('input[data-uom="po"]').value;
+    if(p===''&&q===''){ it.tempPhysPieces=null; it.tempPoPieces=null; }
+    else if(!(Number(p)>0 && Number(q)>0)){ alert('Enter both: pieces per physical unit and pieces per Odoo unit (numbers greater than 0). Leave both blank to clear.'); return; }
+    else { it.tempPhysPieces=Number(p); it.tempPoPieces=Number(q); }
+  }
+  save(); renderAll();
+});
+
+// ---------- split row ----------
+function showSplit(no){
+  const it=state.items.find(x=>x.no===no); if(!it) return;
+  const r=ev.rows.find(x=>x.no===no);
+  const pre=(r&&r.poCandidates.length?r.poCandidates.map(c=>c.poId):[]).concat(it.poId?[it.poId]:[]);
+  const parts=[...new Set(pre)].slice(0,2); while(parts.length<2) parts.push('');
+  const poOpts=sel=>'<option value="">— PO —</option>'+state.pos.map(p=>`<option value="${p.poId}" ${p.poId===sel?'selected':''}>${esc(p.ref)} — ${esc(p.vendor||'')}</option>`).join('');
+  const partRow=(pid,i)=>`<div class="row split-part" style="margin-top:6px;"><div class="field"><select class="spPo">${poOpts(pid)}</select></div><div class="field narrow"><input type="number" step="any" min="0" class="spQty" placeholder="qty"></div></div>`;
+  openModal(`<h3>Split row #${no} across POs</h3>
+    <p class="small">${esc(it.item)} — physical qty <b>${esc(it.physicalQty)}</b> ${esc(it.physicalUom||'(PO UOM)')}. Enter how much belongs to each PO. The parts must add up exactly; nothing is allocated automatically.</p>
+    <div id="spParts">${parts.map(partRow).join('')}</div>
+    <div class="row" style="margin-top:8px;"><button class="secondary" id="spAddPart">+ add PO</button><span id="spSum" class="small" style="align-self:center;"></span></div>
+    <div id="spMsg" style="color:var(--bad);font-size:13px;margin-top:6px;"></div>
+    <div class="row" style="margin-top:10px;"><button id="spSaveBtn">Split row</button><button class="secondary" id="spCancelBtn">Cancel</button></div>`);
+  const sum=()=>{ const t=[...document.querySelectorAll('#spParts .spQty')].reduce((a,x)=>a+(Number(x.value)||0),0); $('spSum').textContent='Parts total: '+t+' of '+it.physicalQty; };
+  $('spParts').addEventListener('input', sum); sum();
+  $('spAddPart').onclick=()=>{ $('spParts').insertAdjacentHTML('beforeend', partRow('',0)); };
+  $('spCancelBtn').onclick=closeModal;
+  $('spSaveBtn').onclick=()=>{
+    const ps=[...document.querySelectorAll('#spParts .split-part')].map(d=>({poId:d.querySelector('.spPo').value, qty:d.querySelector('.spQty').value===''?null:Number(d.querySelector('.spQty').value)})).filter(p=>p.poId||p.qty!==null);
+    const res=E.splitItem(state, no, ps);
+    if(res.errors){ $('spMsg').textContent=res.errors.join(' · '); return; }
+    closeModal(); save(); renderAll();
+  };
+}
+
+// ---------- session ----------
+$('saveSessionBtn').addEventListener('click', ()=>{
+  download(new Blob([JSON.stringify(E.sessionSnapshot(state, uomDefs), null, 2)], {type:'application/json'}), E.sanitizeFileName(state.shipmentName||'shipment')+'_session_v3.json');
+});
+$('loadSessionInput').addEventListener('change', e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=x=>{
+    try{ const msgs=applyLoaded(JSON.parse(x.target.result),'file'); ui.poFilter=''; ui.statusFilter=null; save(); renderAll(); if(msgs.length) alert(msgs.join('\n')); }
+    catch(err){ alert('Could not read that session file.'); }
+    e.target.value='';
+  };
+  reader.readAsText(file);
+});
+$('clearSessionBtn').addEventListener('click', ()=>{
+  if(!confirm('This clears every PO and every item checked in for this shipment (approved UOM definitions are kept). Download a session backup first if you want to keep it. Continue?')) return;
+  state={version:3, shipmentName:'', pos:[], items:[], nextNo:1, poSeq:0, splitArchive:{}, activePoId:null};
+  ui.poFilter=''; ui.statusFilter=null;
+  $('shipmentName').value=''; $('dzPOText').innerHTML='<span class="empty">Click to choose PO file(s), or drag them here</span>';
+  resetQa(); save(); renderAll();
+});
+
+// ---------- export ----------
+function prepareOutputs(){
+  if(!state.pos.length){ alert('Load at least one Purchase Order first.'); return null; }
+  ev=E.evaluate(state, uomDefs);
+  const out=E.buildAllOutputs(XLSX, state, ev);
+  const pending=ev.rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA').length;
+  const problems=[];
+  const fails=out.cross.checks.filter(c=>c.result==='FAIL'); if(fails.length) problems.push('VALIDATION FAILURES:\n'+fails.map(c=>'- '+c.check+': '+c.detail).join('\n'));
+  if(pending) problems.push(pending+' row(s) are still pending review / on hold — they will NOT be in any Odoo Upload File.');
+  const un=ev.rows.filter(r=>!r.poId).length; if(un) problems.push(un+' row(s) are not assigned to a PO — they appear only in the master workbook (Unassigned).');
+  if(problems.length && !confirm(problems.join('\n\n')+'\n\nDownload anyway?')) return null;
+  return out;
+}
+function exportStatus(out, what){
+  $('exportStatus').textContent='Exported '+what+': '+out.files.filter(f=>f.kind==='po').length+' PO workbook(s) available; cross-PO validation: '+(out.cross.errors?out.cross.errors+' FAIL':'PASS')+(out.cross.warnings?' ('+out.cross.warnings+' warning(s))':'')+'.';
+}
+$('exportZipBtn').addEventListener('click', ()=>{
+  const out=prepareOutputs(); if(!out) return;
+  if(typeof JSZip==='undefined'){ alert('The ZIP library could not be loaded (offline?). Use the individual workbook buttons instead.'); return; }
+  E.buildZip(JSZip, XLSX, out).generateAsync({type:'blob'}).then(blob=>{ download(blob, E.sanitizeFileName(state.shipmentName||'shipment')+'_reconciliation_workbooks.zip'); exportStatus(out,'ZIP ('+out.files.length+' files)'); });
+});
+$('exportMasterBtn').addEventListener('click', ()=>{ const out=prepareOutputs(); if(!out) return; const f=out.files.find(x=>x.kind==='master'); XLSX.writeFile(f.wb, f.name); exportStatus(out,'master workbook'); });
+function renderExportBtns(){ $('poExportBtns').innerHTML=state.pos.map(p=>`<button class="secondary" data-exportpo="${p.poId}">Workbook — PO ${esc(p.ref)}</button>`).join(''); }
+$('poExportBtns').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-exportpo]'); if(!b) return;
+  const out=prepareOutputs(); if(!out) return; const f=out.files.find(x=>x.poId===b.dataset.exportpo); if(!f) return;
+  XLSX.writeFile(f.wb, f.name); exportStatus(out,'PO '+f.ref);
+});
+
+// ---------- render ----------
+function renderAll(){ ev=E.evaluate(state, uomDefs); renderPoOptions(); renderPoTable(); renderUom(); renderDashboard(); renderTable(); renderPoIssues(); renderExportBtns(); }
+
+load();
+renderAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "shipment-manager-v2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite \"Shipment Manager V2\" --host 127.0.0.1 --open /Shipment_Manager_v2.html"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}

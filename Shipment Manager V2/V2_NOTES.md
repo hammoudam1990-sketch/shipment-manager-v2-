@@ -10,6 +10,7 @@
 - **Tests:** in `v2_tests/`.
   - `run_tests.js`: 130 engine tests. Run `node run_tests.js --mutations` to add the 11 mutation checks.
   - `ui_smoke_test.js`: 34 UI checks on the real page, run in a simulated browser (jsdom).
+  - `receiving_test.js`: focused dashboard, PO quantity and damage tests using synthetic data; run `node receiving_test.js` with `xlsx`, `jszip` and `jsdom` available.
   - Results: `TEST_RESULTS.md`.
   - Copies of the real exports: `fixtures/`. The originals are only ever read.
   - Sample outputs: `test_output/`.
@@ -52,6 +53,9 @@ These are unchanged, from 2026-09-30.
 - **Workings shown:** every converted row shows how it was converted, through PCS. Every workbook has a "UOM Definitions Used" sheet.
 
 ## Multiple POs per shipment (approved B–K)
+- Dashboard PO tiles and status cards open item details in a popup. The popup can apply the selection to the reconciliation table. Expand **View PO items** in the PO list for ordered, physically received, damaged and usable totals in the PO UOM. Only confirmed, counted matches are included; identical lines remain grouped, and unknown conversions show as pending.
+- Manual check-in accepts a damaged quantity in the physical UOM. Section 8 lists damaged rows across all POs and links back to check-in for editing. Physical quantity includes damage; usable quantity is physical minus damaged. A row with damage is held out of the Odoo Upload File entirely, even after other review decisions. The physical received total still includes damaged items. Damaged and usable quantities are recorded in Receiving Detail and the master All Receiving sheet. Bulk import does not read damaged quantities; add or edit them in check-in.
+- A damaged quantity must be non-negative and no greater than the physical quantity. Rows containing damage cannot be split between POs: enter separate rows with the correct quantity and damage for each PO instead. Old sessions without a damaged quantity remain valid.
 - **One file = one PO.** The exception is a file with an explicit PO / Source Document column, which is split by that column.
 - **PO reference** comes from the file name, e.g. `P00343.xlsx` → P00343. It is confirmed or edited at import. If a PO column disagrees with the file name, the import stops and asks.
 - **Vendor** is required. It is typed or chosen at import, because receipt exports have no vendor column.
@@ -111,9 +115,14 @@ These are unchanged, from 2026-09-30.
 
 ## Sessions and compatibility
 - **Storage:** the v3 session is stored under `bfl_shipment_manager_v3_session`. The v1 key (`bfl_shipment_session_v3`) and the v2 key (`bfl_shipment_manager_v2_session`) are never written or deleted.
+- **Backup:** session data is local to the browser and site address, not stored in Git. Download a session backup from section 7 before refreshing or changing devices. If browser storage fails, the page warns the user to download a backup without closing the page.
 - **Old single-PO v2 session in the browser:** a **copy** is migrated on first open. It becomes one PO, with its reference from the old file name, and you are asked to enter the vendor. Statuses are identical to before (test SES-1).
 - **Session backups (.json):** v1 and v2 backups can be loaded. A v1 backup loads as rows with no PO.
 - **UOM definitions in a backup:** a v3 backup includes a snapshot of the definitions. When loaded, missing ones are only offered for adding, and a conflicting definition is never overwritten.
+
+## Performance
+- Check-in previews reuse the current PO matching index; changing a display filter does not re-evaluate the shipment.
+- PO details are built when opened, and individual workbook downloads build only the requested workbook. Full ZIP exports still contain all workbooks and run the same cross-PO validation.
 
 ## Validation results (2026-10-01, after fixes C1 + C2)
 | Suite | Result |

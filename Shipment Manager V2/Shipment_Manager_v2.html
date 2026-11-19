@@ -54,6 +54,9 @@
 
   .dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:4px;}
   .stat{border:1px solid var(--line);border-radius:2px;padding:12px 14px;background:#fbfaf6;cursor:pointer;transition:box-shadow .12s ease;}
+  button.stat{width:100%;text-align:left;white-space:normal;letter-spacing:normal;font-family:inherit;color:var(--ink);}
+  button.stat:hover:not(:disabled){background:#f1f6f2;}
+  button.stat:focus-visible{outline:3px solid var(--accent-dark);outline-offset:2px;}
   .stat:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);}
   .stat.active{border-color:var(--accent-dark);box-shadow:inset 0 0 0 2px var(--accent-dark);}
   .stat .n{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--accent-dark);}
@@ -175,7 +178,7 @@
 
   <div class="panel">
     <h2>3 · Live dashboard</h2>
-    <p class="hint">PO tiles show each PO's overall status — click one to filter everything below to that PO. Status cards filter the reconciliation table.</p>
+    <p class="hint">Open a PO tile or status card to see its matching items. You can also apply the selection to the reconciliation table.</p>
     <div class="dash-grid" id="poTiles"></div>
     <div class="dash-grid" id="dashGrid" style="margin-top:10px;"></div>
     <div class="banner bad" id="notFoundBanner">
@@ -187,6 +190,7 @@
   <div class="panel">
     <h2>4 · Check in an item</h2>
     <p class="hint">Choose the PO when the paperwork tells you which PO the goods belong to; leave <b>Auto</b> otherwise — the tool links the row automatically only when exactly one loaded PO contains the product, and asks you when several do.</p>
+    <p class="hint">Physical quantity includes damaged items. Enter damage in the same physical UOM; rows with damage are excluded from the Odoo upload.</p>
     <div class="edit-banner" id="editBanner">Editing row <b id="editNo"></b> — decisions on this row will be reset. <button class="secondary" id="cancelEditBtn" style="padding:4px 10px;margin-left:8px;">Cancel edit</button></div>
     <div class="row">
       <div class="field" style="flex:1 1 220px;">
@@ -206,6 +210,7 @@
     <div class="row" style="margin-top:10px;">
       <div class="field"><label>Physical barcode (scanned)</label><input type="text" id="qaPhysBC"></div>
       <div class="field narrow"><label>Physical qty</label><input type="number" id="qaPhysQty" step="any"></div>
+      <div class="field narrow"><label for="qaDamagedQty">Damaged qty</label><input type="number" id="qaDamagedQty" step="any" min="0" placeholder="0"></div>
       <div class="field narrow"><label>Physical UOM</label><input type="text" id="qaPhysUom" placeholder="blank = PO UOM"></div>
       <div class="field narrow"><label>Pieces / phys. unit</label><input type="number" id="qaPhysPieces" step="any" placeholder="optional"></div>
       <div class="field narrow"><label>Weight / spec</label><input type="text" id="qaPhysSpec" placeholder="e.g. 750g"></div>
@@ -240,10 +245,10 @@
       <div id="filterTagWrap" style="align-self:flex-end;"></div>
     </div>
     <div class="table-scroll">
-      <table id="itemsTable">
+      <table id="itemsTable" tabindex="-1">
         <thead><tr>
           <th>#</th><th>PO</th><th>Product</th><th>Matched via</th><th>PO barcode</th><th>Physical barcode</th>
-          <th>PO UOM</th><th>Physical UOM</th><th>PO qty</th><th>Physical qty</th><th>Conv. factor</th><th>Odoo qty</th>
+          <th>PO UOM</th><th>Physical UOM</th><th>PO qty</th><th>Physical qty</th><th>Damaged / usable</th><th>Conv. factor</th><th>Odoo qty</th>
           <th>Expiry</th><th>Status</th><th>Reason</th><th>Required action</th><th>Review</th><th></th>
         </tr></thead>
         <tbody id="itemsTbody"></tbody>
@@ -265,6 +270,17 @@
     </div>
     <div class="row" style="margin-top:10px;" id="poExportBtns"></div>
     <div id="exportStatus" style="margin-top:8px;font-size:13px;color:var(--muted);"></div>
+  </div>
+
+  <div class="panel">
+    <h2>8 · Damaged items (<span id="damageCount">0</span>)</h2>
+    <p class="hint">All damaged items in this shipment appear here, regardless of the PO filter. Enter or edit damaged quantities in Check in an item. Rows with damage are excluded from Odoo uploads.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>#</th><th>PO</th><th>Product</th><th>Physical UOM</th><th>Physical qty</th><th>Damaged qty</th><th>Usable qty</th><th>Review</th><th></th></tr></thead>
+        <tbody id="damageTbody"></tbody>
+      </table>
+    </div>
   </div>
 
   <footer>
@@ -717,12 +733,13 @@ function locate(it, S){
     return {m, poId:selected, poSource:it.poSource||'selected'};
   }
   const unknownRef = it.poId ? it.poId : (it.poRefText||null);
-  const hits=S.pos.map(p=>({p,m:inPo(p.poId)})).filter(x=>x.m.confidence!=='none');
+  const matches=S.pos.map(p=>({p,m:inPo(p.poId)}));
+  const hits=matches.filter(x=>x.m.confidence!=='none');
   const certain=hits.filter(x=>x.m.confidence==='certain');
   const use=certain.length?certain:hits;
   if(unknownRef) return {m:none('Row names PO "'+unknownRef+'", which is not loaded'), poId:null, poState:'selection', poCandidates:(use.length?use:S.pos.map(p=>({p,m:none('')}))).map(poCand), note:'PO ref "'+unknownRef+'" is not loaded'};
   if(!use.length){
-    const sugg=[]; for(const p of S.pos){ const m=inPo(p.poId); sugg.push(...m.candidates); }
+    const sugg=[]; for(const x of matches) sugg.push(...x.m.candidates);
     return {m:none('No line on any loaded PO matches the barcode or product name', sugg.slice(0,6)), poId:null};
   }
   if(use.length===1){
@@ -741,15 +758,18 @@ function locate(it, S){
   return {m:none('Product is on '+use.length+' loaded POs'), poId:null, poState:'selection', poCandidates:use.map(poCand)};
 }
 
-function evaluate(state, defsArg){
+function evaluate(state, defsArg, catalog, preview){
   const defs = defsArg || state.uomDefinitions || [];
   const settings={blankPhysUomSameAsPo:true}; // business rule #2 — fixed, not configurable
   const view=shipmentView(state);
-  const S={pos:view.pos, poById:new Map(view.pos.map(p=>[p.poId,p])), perPo:new Map(), targetsByPo:new Map(), byAnyId:new Map(), targets:[]};
-  for(const p of view.pos){
-    const ts=buildTargets(p, defs); S.targetsByPo.set(p.poId, ts); S.targets.push(...ts);
-    const idx=buildPoIndex(ts); S.perPo.set(p.poId, idx);
-    for(const [k,v] of idx.byId) S.byAnyId.set(k,v);
+  let S=catalog;
+  if(!S){
+    S={pos:view.pos, poById:new Map(view.pos.map(p=>[p.poId,p])), perPo:new Map(), targetsByPo:new Map(), byAnyId:new Map(), targets:[]};
+    for(const p of view.pos){
+      const ts=buildTargets(p, defs); S.targetsByPo.set(p.poId, ts); S.targets.push(...ts);
+      const idx=buildPoIndex(ts); S.perPo.set(p.poId, idx);
+      for(const [k,v] of idx.byId) S.byAnyId.set(k,v);
+    }
   }
   const seen=new Map();
   const pre=view.items.map(it=>{
@@ -776,6 +796,7 @@ function evaluate(state, defsArg){
     if(!excluded){ g.counted++; if(r.conv.known) g.total=round6(g.total+r.conv.odooQty); else g.known=false; }
   }
   const rows=pre.map(r=>classifyRow(r, groups));
+  if(preview) return {rows};
   const covered=new Set(groups.keys());
   const pendingLines=new Set();
   for(const r of pre){ if(r.resolved) continue; for(const c of r.m.candidates) pendingLines.add(c.id); for(const pc of (r.loc.poCandidates||[])) if(pc.target) pendingLines.add(pc.target.id); }
@@ -793,8 +814,9 @@ function evaluate(state, defsArg){
     for(const l of p.lines){ if(!normBC(l.barcode)) poIssues.push('PO '+p.ref+': line "'+l.item+'" has no barcode (treated as non-formal)'); if(toNum(l.qty)===null) poIssues.push('PO '+p.ref+': line "'+l.item+'" has no numeric quantity'); }
     if(!String(p.vendor||'').trim()) poIssues.push('PO '+p.ref+': vendor is missing');
   }
-  return {rows, missing, groups, targets:S.targets, targetsByPo:S.targetsByPo, pos:view.pos, poIssues, poInfo, settings, defs};
+  return {rows, missing, groups, targets:S.targets, targetsByPo:S.targetsByPo, pos:view.pos, poIssues, poInfo, settings, defs, catalog:S};
 }
+function previewItem(item, defs, catalog){ return evaluate({pos:catalog.pos, items:[item]}, defs, catalog, true).rows[0]; }
 
 function classifyRow(r, groups){
   const it=r.it, d=r.d, flags=[], decisions=[], reasons=[], actions=[], notes=[];
@@ -929,7 +951,6 @@ function classifyRow(r, groups){
   const priority=['DUP_ENTRY','SPEC_MISMATCH','UOM_REVIEW','BARCODE_REVIEW','QTY_PENDING'];
   const blocking=priority.find(f=>flags.includes(f));
   const status=blocking || caseStatus || 'QTY_PENDING';
-  if(status==='READY' && !actions.length) actions.push('None — included in the Odoo upload');
   return finish(base, status, caseStatus);
 }
 
@@ -939,7 +960,19 @@ function finish(base, status, caseStatus){
   const held=req.filter(x=>x.value==='hold');
   base.status=status; base.caseStatus=caseStatus;
   base.statusLabel=STATUS[status].label;
-  if(held.length) base.review='ON HOLD';
+  const rawDamage=base.it.damagedQty;
+  const damaged=(rawDamage===null || rawDamage===undefined || rawDamage==='')?0:toNum(rawDamage);
+  const physical=toNum(base.it.physicalQty);
+  const invalidDamage=damaged===null || damaged<0 || (damaged>0 && (physical===null || physical<damaged));
+  base.damagedQty=invalidDamage?null:damaged;
+  base.usableQty=!invalidDamage && physical!==null && physical>=0?round6(physical-damaged):null;
+  if(status==='READY' && !base.actions.length && !invalidDamage && damaged===0) base.actions.push('None — included in the Odoo upload');
+  if(invalidDamage || damaged>0){
+    base.reasons.push(invalidDamage?'Invalid damaged quantity: enter a non-negative amount no greater than the physical quantity':damaged+' damaged in the physical UOM; usable quantity '+base.usableQty);
+    base.actions.push(invalidDamage?'Edit the row to correct the damaged quantity. Do not upload.':'Handle damaged items separately. This row is excluded from the Odoo upload.');
+  }
+  if(invalidDamage || damaged>0) base.review='ON HOLD — DAMAGED ITEMS';
+  else if(held.length) base.review='ON HOLD';
   else if(pending.length) base.review='PENDING: '+pending.map(x=>x.label).join('; ');
   else if(req.length) base.review='RESOLVED BY USER';
   else base.review= status==='READY' ? 'AUTO — no review needed' : 'NOT UPLOADABLE';
@@ -956,6 +989,7 @@ function finish(base, status, caseStatus){
   if(base.bcState==='unknown' && d.physbc==='use_po' && base.line && !pending.length && !held.length && base.conv.known && base.qtyState!=='group-pending' && base.qtyState!=='uom'){
     uploadBC=normBC(base.line.barcode); eligible=!!uploadBC;
   }
+  if(invalidDamage || damaged>0) eligible=false;
   base.uploadEligible=eligible; base.uploadBarcode=eligible?uploadBC:null;
   base.odooQty=base.conv.known?base.conv.odooQty:null;
   return base;
@@ -996,6 +1030,7 @@ function buildUpload(ev, poId){
 // ---------- session migration: v1 backup / v2 single-PO session → v3 multi-PO (input never modified) ----------
 function cleanItem(it){
   return { no:it.no, item:it.item, physicalBC:it.physicalBC??null, physicalQty:it.physicalQty??null, expiry:it.expiry??null, notes:it.notes??null,
+    damagedQty:it.damagedQty??null,
     physicalUom:it.physicalUom??null, physicalPieces:it.physicalPieces??null, physicalSpec:it.physicalSpec??null,
     poId:it.poId??null, poSource:it.poSource??null, poRefText:it.poRefText??null,
     manualTargetId:it.manualTargetId??null, manualNotOnPo:!!it.manualNotOnPo,
@@ -1061,6 +1096,8 @@ function splitItem(state, no, parts){
   if(idx<0) return {errors:['Row #'+no+' not found']};
   const orig=state.items[idx];
   const errors=[];
+  if(orig.damagedQty!==null && orig.damagedQty!==undefined && orig.damagedQty!=='' && toNum(orig.damagedQty)!==0)
+    errors.push('Rows with damaged items cannot be split. Enter separate rows for each PO and its damaged quantity instead.');
   const total=toNum(orig.physicalQty);
   if(total===null) errors.push('The row has no numeric physical quantity');
   if(!Array.isArray(parts)||parts.length<2) errors.push('A split needs at least two parts');
@@ -1162,8 +1199,8 @@ function rowPcs(r){
   const lineRecvPcs = (r.group && r.group.known && pp) ? round6(r.group.total*pp) : null;
   return {physPcs:r.conv.physPcs, orderedPcs, lineRecvPcs, diffPcs:(orderedPcs!==null&&lineRecvPcs!==null)?round6(lineRecvPcs-orderedPcs):null};
 }
-const DETAIL_H=['No.','PO Ref','Vendor','Receipt Ref','PO Assigned By','Product (physical)','PO Product','Identical Group','Matched Via','Match Confidence','PO Barcode','Physical Barcode','PO Barcode Formal?','PO UOM','Physical UOM','Pieces per Physical Unit','Pieces per Odoo Unit','Conversion Factor','Conversion Source / Working','PO Qty','Physical Qty','Converted Odoo Qty','PO Line Received Total (Odoo UOM)','PO Qty (PCS)','Physical (PCS)','Line Received (PCS)','Line Difference (PCS)','Expiry','Physical Spec','Case','Status','Reason','Required Action','Review Status','Decisions','In Upload?','Upload Barcode','Split From','Notes (row)','Notes (tool)'];
-const DETAIL_W=[6,12,18,16,12,40,40,10,30,12,16,16,10,10,14,10,10,10,40,8,10,10,12,10,10,10,10,12,12,6,40,60,60,30,50,8,16,8,24,50];
+const DETAIL_H=['No.','PO Ref','Vendor','Receipt Ref','PO Assigned By','Product (physical)','PO Product','Identical Group','Matched Via','Match Confidence','PO Barcode','Physical Barcode','PO Barcode Formal?','PO UOM','Physical UOM','Pieces per Physical Unit','Pieces per Odoo Unit','Conversion Factor','Conversion Source / Working','PO Qty','Physical Qty','Converted Odoo Qty','PO Line Received Total (Odoo UOM)','PO Qty (PCS)','Physical (PCS)','Line Received (PCS)','Line Difference (PCS)','Expiry','Physical Spec','Case','Status','Reason','Required Action','Review Status','Decisions','In Upload?','Upload Barcode','Split From','Notes (row)','Notes (tool)','Damaged Qty (Physical UOM)','Usable Qty (Physical UOM)'];
+const DETAIL_W=[6,12,18,16,12,40,40,10,30,12,16,16,10,10,14,10,10,10,40,8,10,10,12,10,10,10,10,12,12,6,40,60,60,30,50,8,16,8,24,50,18,18];
 function detailRow(r){
   const p=rowPcs(r);
   return [r.no, r.poRef||'', r.vendor||'', (r.receiptRefs||[]).join(', '), r.poSource||'', r.it.item, r.line?r.line.item:(r.match.line?'(suggested) '+r.match.line.item:''),
@@ -1173,7 +1210,7 @@ function detailRow(r){
     r.poQty??'', r.it.physicalQty??'', r.odooQty??'', r.group&&r.group.known?r.group.total:'',
     p.orderedPcs??'', p.physPcs??'', p.lineRecvPcs??'', p.diffPcs??'', r.it.expiry||'', r.it.physicalSpec||'',
     r.caseNo??'', r.statusLabel, r.reasons.join(' | '), r.actions.join(' | '), r.review, decisionText(r),
-    r.uploadEligible?'Yes':'No', r.uploadBarcode||'', r.it.splitFrom||'', r.it.notes||'', r.notes.join(' | ')];
+    r.uploadEligible?'Yes':'No', r.uploadBarcode||'', r.it.splitFrom||'', r.it.notes||'', r.notes.join(' | '), r.damagedQty??'', r.usableQty??''];
 }
 function uomDefinitionsUsedAoa(ev, rows){
   const a=[['Type','UOM','PCS per unit','Side','Approved by','Approved on','Note / used by']];
@@ -1188,6 +1225,8 @@ function uomDefinitionsUsedAoa(ev, rows){
 // Status of one PO (approved definitions G).
 function poSummary(ev, po){
   const rows=ev.rows.filter(r=>r.poId===po.poId);
+  const rowsByTarget=new Map();
+  for(const r of rows){ if(!r.targetId) continue; if(!rowsByTarget.has(r.targetId)) rowsByTarget.set(r.targetId,[]); rowsByTarget.get(r.targetId).push(r); }
   const targets=(ev.targetsByPo&&ev.targetsByPo.get(po.poId))||[];
   const missing=ev.missing.filter(m=>m.poId===po.poId);
   const cnt=k=>rows.filter(r=>r.status===k).length;
@@ -1197,7 +1236,7 @@ function poSummary(ev, po){
   for(const r of rows){ if(!r.line || r.countsTowardLine===false) continue; if(r.conv.physPcs!==null) receivedPcs=round6(receivedPcs+r.conv.physPcs); else receivedPcsUnknownRows++; }
   let readyLines=0, qtyMismatchLines=0;
   for(const t of targets){ const g=ev.groups.get(t.id); if(!g) continue;
-    const trs=rows.filter(r=>r.targetId===t.id);
+    const trs=rowsByTarget.get(t.id)||[];
     if(trs.length && trs.every(r=>r.status==='READY')) readyLines+=t.lines.length;
     if(g.known && toNum(t.qty)!==null && !qtyEq(g.total,toNum(t.qty))) qtyMismatchLines+=t.lines.length; }
   const extras=cnt('EXTRA');
@@ -1337,12 +1376,17 @@ function buildMasterWorkbook(XLSX, state, ev){
 }
 
 // All output files for the shipment: N per-PO workbooks + 1 master. Names are filesystem-safe and unique.
-function buildAllOutputs(XLSX, state, ev){
+function buildAllOutputs(XLSX, state, ev, selection){
   const base=sanitizeFileName(state.shipmentName||'shipment');
   const used=new Set(), files=[];
   const uniq=n=>{ let x=n, i=2; while(used.has(x.toLowerCase())){ x=n.replace(/\.xlsx$/,'')+'_'+(i++)+'.xlsx'; } used.add(x.toLowerCase()); return x; };
-  for(const p of ev.pos) files.push({kind:'po', poId:p.poId, ref:p.ref, name:uniq(base+'_'+sanitizeFileName(p.ref)+'_reconciliation.xlsx'), wb:buildPoWorkbook(XLSX,state,ev,p.poId)});
-  files.push({kind:'master', name:uniq(base+'_MASTER_reconciliation.xlsx'), wb:buildMasterWorkbook(XLSX,state,ev)});
+  for(const p of ev.pos){
+    const name=uniq(base+'_'+sanitizeFileName(p.ref)+'_reconciliation.xlsx');
+    if(!selection || (selection.kind==='po' && selection.poId===p.poId))
+      files.push({kind:'po', poId:p.poId, ref:p.ref, name, wb:buildPoWorkbook(XLSX,state,ev,p.poId)});
+  }
+  const masterName=uniq(base+'_MASTER_reconciliation.xlsx');
+  if(!selection || selection.kind==='master') files.push({kind:'master', name:masterName, wb:buildMasterWorkbook(XLSX,state,ev)});
   const cv=crossValidate(ev);
   return {files, cross:cv, summaries:ev.pos.map(p=>poSummary(ev,p))};
 }
@@ -1354,7 +1398,7 @@ function buildZip(JSZip, XLSX, outputs){
 
 return { norm, normBC, isFormalBarcode, barcodeQuality, resolveUom, odooUnit, validateUomDefinition, BUILTIN_UOM_RULES, TEMP_SOURCE, specTokens, specCheck, uomKey,
   parsePoAoa, parseImportAoa, rowKey, buildPoIndex, matchToPO, buildPoDrafts, addPo, findPoByRef, resolvePoRef, shipmentView, buildTargets, lineIdentityKey, locate,
-  setRowPo, setRowMatch, splitItem, canUndoSplit, undoSplit, planReimport, applyReimport, removePo, extractInternalRef, fileStem, sanitizeFileName, computeConversion, evaluate, buildUpload, buildWorkbook,
+  setRowPo, setRowMatch, splitItem, canUndoSplit, undoSplit, planReimport, applyReimport, removePo, extractInternalRef, fileStem, sanitizeFileName, computeConversion, evaluate, previewItem, buildUpload, buildWorkbook,
   buildPoWorkbook, buildMasterWorkbook, buildAllOutputs, buildZip, crossValidate, poSummary, PO_STATUS_ORDER,
   migrateSession, sessionSnapshot, definitionsToOffer, normUomText,
   lineLabel, decisionText, fmtDate, toNum, STATUS };
@@ -1382,7 +1426,14 @@ function poById(id){ return state.pos.find(p=>p.poId===id)||null; }
 function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
 
 // ---------- persistence ----------
-function save(){ lsSet(STORAGE_KEY, JSON.stringify(E.sessionSnapshot(state, uomDefs))); }
+let saveWarningShown=false;
+function save(){
+  if(lsSet(STORAGE_KEY, JSON.stringify(E.sessionSnapshot(state, uomDefs)))) saveWarningShown=false;
+  else if(!saveWarningShown){
+    saveWarningShown=true;
+    alert('The session could not be saved in this browser. Download a session backup now and do not close this page until your data is safely backed up.');
+  }
+}
 function saveDefs(){ lsSet(DEFS_KEY, JSON.stringify(uomDefs)); }
 function loadDefs(){ try{ const r=lsGet(DEFS_KEY); const d=r?JSON.parse(r):[]; uomDefs=Array.isArray(d)?d:[]; }catch(e){ uomDefs=[]; } }
 function applyLoaded(data, origin){
@@ -1505,9 +1556,22 @@ function showReimport(po, q){
 }
 
 // ---------- PO list ----------
+function poDetailRows(poId){
+  const targets=ev.targetsByPo.get(poId)||[], byTarget=new Map();
+  for(const r of ev.rows){ if(!r.targetId || r.countsTowardLine===false) continue; if(!byTarget.has(r.targetId)) byTarget.set(r.targetId,[]); byTarget.get(r.targetId).push(r); }
+  return targets.map(t=>{
+    const g=ev.groups.get(t.id), rs=byTarget.get(t.id)||[];
+    const known=rs.every(r=>r.conv.known && r.damagedQty!==null);
+    const damage=known?Math.round(rs.reduce((a,r)=>a+r.damagedQty*r.conv.factor,0)*1e6)/1e6:null;
+    const received=g?(g.known?g.total:null):0;
+    const usable=known && received!==null?Math.round((received-damage)*1e6)/1e6:null;
+    return `<tr><td>${esc(t.item)}${t.isGroup?`<div class="small">Identical group: ${t.lines.map(l=>esc(l.qty)).join(' + ')}; not allocated to individual lines</div>`:''}</td><td>${esc(t.uom||'')}</td><td class="num">${esc(t.qty??'—')}</td><td class="num">${received===null?'Pending UOM':esc(received)}</td><td class="num">${damage===null?'Pending':esc(damage)}</td><td class="num">${usable===null?'Pending':esc(usable)}</td></tr>`;
+  }).join('');
+}
 function renderPoTable(){
-  $('poTbody').innerHTML = state.pos.length ? state.pos.map(p=>{ const s=E.poSummary(ev,p);
-    return `<tr><td><b>${esc(p.ref)}</b><div class="small">${esc(p.refSource||'')}</div></td>
+  const open=new Set([...document.querySelectorAll('#poTbody details[open]')].map(d=>d.dataset.poid));
+  $('poTbody').innerHTML = state.pos.length ? state.pos.map(p=>{ const s=poSummaries.get(p.poId), isOpen=open.has(p.poId);
+    return `<tr><td><b>${esc(p.ref)}</b><div class="small">${esc(p.refSource||'')}</div><details data-poid="${esc(p.poId)}" data-loaded="${isOpen?'1':'0'}" ${isOpen?'open':''}><summary>View PO items</summary><div class="table-scroll"><table><thead><tr><th>Product</th><th>Odoo UOM</th><th>Ordered</th><th>Received</th><th>Damaged</th><th>Usable</th></tr></thead><tbody>${isOpen?poDetailRows(p.poId):''}</tbody></table></div><p class="small">Only confirmed, counted matches are included. Received includes damaged items; quantities pending conversion are not guessed.</p></details></td>
       <td>${p.vendor?esc(p.vendor):'<span class="badge bad">vendor missing</span>'}</td>
       <td>${esc((p.receiptRefs||[]).join(', '))}</td><td class="small">${esc(p.fileName||'')}${(p.history||[]).length?'<div>re-imported '+p.history.length+'×</div>':''}</td>
       <td class="num">${p.lines.length}</td><td class="num">${s.orderedPcs}${s.orderedPcsUnknownLines?'<div class="small">+'+s.orderedPcsUnknownLines+' undefined UOM</div>':''}</td>
@@ -1515,6 +1579,7 @@ function renderPoTable(){
       <td><button class="row-btn edit" data-poact="vendor" data-poid="${p.poId}">edit vendor</button><button class="row-btn edit" data-poact="ref" data-poid="${p.poId}">edit ref</button><button class="row-btn del" data-poact="remove" data-poid="${p.poId}">remove</button></td></tr>`; }).join('')
     : '<tr><td colspan="9" class="small">No PO loaded yet.</td></tr>';
 }
+$('poTbody').addEventListener('toggle', e=>{ const d=e.target; if(d.matches('details[data-poid]') && d.open && d.dataset.loaded!=='1'){ d.querySelector('tbody').innerHTML=poDetailRows(d.dataset.poid); d.dataset.loaded='1'; } }, true);
 function poStatusCls(s){ return s==='COMPLETE'?'ok':(s==='NEEDS REVIEW'?'bad':(s==='NOT STARTED'?'info':'warn')); }
 $('poTbody').addEventListener('click', e=>{
   const b=e.target.closest('button[data-poact]'); if(!b) return;
@@ -1565,14 +1630,15 @@ $('uomImportInput').addEventListener('change', e=>{
 function rowsInScope(){ if(!ui.poFilter) return ev.rows; if(ui.poFilter==='__unassigned__') return ev.rows.filter(r=>!r.poId); return ev.rows.filter(r=>r.poId===ui.poFilter); }
 function missingInScope(){ if(!ui.poFilter) return ev.missing; if(ui.poFilter==='__unassigned__') return []; return ev.missing.filter(m=>m.poId===ui.poFilter); }
 function renderDashboard(){
-  const tiles=state.pos.map(p=>{ const s=E.poSummary(ev,p); return `<div class="stat po-tile ${ui.poFilter===p.poId?'active':''}" data-po="${p.poId}"><div class="l"><b>${esc(p.ref)}</b> · ${esc(p.vendor||'vendor missing')}</div><div class="n" style="font-size:15px;">${esc(s.status)}</div><div class="l">${s.rows} rows · ${s.uploadRows} in upload · ${s.missingLines} missing</div></div>`; });
+  const tiles=state.pos.map(p=>{ const s=poSummaries.get(p.poId); return `<button type="button" class="stat po-tile ${ui.poFilter===p.poId?'active':''}" data-po="${esc(p.poId)}"><div class="l"><b>${esc(p.ref)}</b> · ${esc(p.vendor||'vendor missing')}</div><div class="n" style="font-size:15px;">${esc(s.status)}</div><div class="l">${s.rows} rows · ${s.uploadRows} in upload · ${s.missingLines} missing</div></button>`; });
   const un=ev.rows.filter(r=>!r.poId).length;
-  if(state.pos.length>1 || un) tiles.push(`<div class="stat ${un?'alert':''} ${ui.poFilter==='__unassigned__'?'active':''}" data-po="__unassigned__"><div class="l"><b>Unassigned</b></div><div class="n">${un}</div><div class="l">PO choice pending / extra with no PO</div></div>`);
+  if(state.pos.length>1 || un) tiles.push(`<button type="button" class="stat ${un?'alert':''} ${ui.poFilter==='__unassigned__'?'active':''}" data-po="__unassigned__"><div class="l"><b>Unassigned</b></div><div class="n">${un}</div><div class="l">PO choice pending / extra with no PO</div></button>`);
   $('poTiles').innerHTML=tiles.join('');
   const rows=rowsInScope(), counts={}; for(const k in E.STATUS) counts[k]=0; for(const r of rows) counts[r.status]++;
   const upload=rows.filter(r=>r.uploadEligible).length, pending=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA').length;
-  const card=(key,n,label,cls)=>`<div class="stat ${cls} ${n?'':'zero'} ${ui.statusFilter===key?'active':''}" data-f="${key}"><div class="n">${n}</div><div class="l">${esc(label)}</div></div>`;
+  const card=(key,n,label,cls)=>`<button type="button" class="stat ${cls} ${n?'':'zero'} ${ui.statusFilter===key?'active':''}" data-f="${key}"><div class="n">${n}</div><div class="l">${esc(label)}</div></button>`;
   let html=card('__all__', rows.length, 'Total checked in', 'all')+card('__upload__', upload, 'In Odoo upload (validated)', '')+card('__pending__', pending, 'Pending review / on hold', 'review');
+  html+=card('__damaged__', rows.filter(r=>r.damagedQty===null || r.damagedQty>0).length, 'Damaged items / invalid damage', 'alert');
   for(const k of Object.keys(E.STATUS).sort((a,b)=>E.STATUS[a].order-E.STATUS[b].order)){ const s=E.STATUS[k]; html+=card(k, counts[k], s.label, s.cls==='ok'?'':(s.cls==='bad'?'alert':'review')); }
   html+=card('MISSING', missingInScope().length, 'MISSING (PO lines not received)', 'alert');
   $('dashGrid').innerHTML=html;
@@ -1580,8 +1646,27 @@ function renderDashboard(){
   if(extra.length){ $('notFoundBanner').classList.add('show'); $('notFoundList').innerHTML=extra.map(r=>`<li>${esc(r.it.item)} ${r.it.physicalBC?'— barcode '+esc(r.it.physicalBC):''} ${r.poRef?'— on PO '+esc(r.poRef):'— no PO'}</li>`).join(''); }
   else $('notFoundBanner').classList.remove('show');
 }
-$('poTiles').addEventListener('click', e=>{ const t=e.target.closest('[data-po]'); if(!t) return; ui.poFilter = ui.poFilter===t.dataset.po ? '' : t.dataset.po; renderAll(); });
-$('dashGrid').addEventListener('click', e=>{ const t=e.target.closest('[data-f]'); if(!t) return; const f=t.dataset.f; ui.statusFilter=(f==='__all__')?null:(ui.statusFilter===f?null:f); renderAll(); });
+function statusRows(rows,f){
+  if(f==='__upload__') return rows.filter(r=>r.uploadEligible);
+  if(f==='__pending__') return rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA');
+  if(f==='__damaged__') return rows.filter(r=>r.damagedQty===null || r.damagedQty>0);
+  return !f || f==='__all__'?rows:rows.filter(r=>r.status===f);
+}
+function dashboardPopup(title, rows, missing, poFilter, statusFilter, opener){
+  const body=rows.map(r=>`<tr><td>${esc(r.poRef||'Unassigned')}</td><td>${esc(r.it.item)}</td><td>${esc(r.it.physicalQty??'—')} ${esc(r.it.physicalUom||r.poUom||'')}${r.damagedQty>0?`<div class="small">Damaged: ${esc(r.damagedQty)} · usable: ${esc(r.usableQty)}</div>`:''}</td><td>${esc(r.statusLabel)}<div class="small">${esc(r.review)}</div></td></tr>`).join('')
+    +(missing||[]).map(m=>`<tr><td>${esc(m.poRef||'')}</td><td>${esc(m.line.item)}</td><td>—</td><td>MISSING</td></tr>`).join('');
+  openModal(`<h3 id="dashDialogTitle">${esc(title)}</h3><div class="table-scroll"><table><thead><tr><th>PO</th><th>Product</th><th>Physical qty</th><th>Status</th></tr></thead><tbody>${body||'<tr><td colspan="4">No matching items.</td></tr>'}</tbody></table></div><div class="row" style="margin-top:12px;"><button id="dashApply">Show in reconciliation</button><button class="secondary" id="dashClose">Close</button></div>`);
+  const back=$('modalBack');
+  back.setAttribute('role','dialog'); back.setAttribute('aria-modal','true'); back.setAttribute('aria-labelledby','dashDialogTitle');
+  const dismiss=()=>{ back.removeEventListener('keydown', keys); back.removeAttribute('role'); back.removeAttribute('aria-modal'); back.removeAttribute('aria-labelledby'); closeModal(); if(opener.isConnected) opener.focus(); };
+  const keys=e=>{ if(e.key==='Escape'){ e.preventDefault(); dismiss(); } else if(e.key==='Tab'){ const first=$('dashApply'), last=$('dashClose'); if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); } else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); } } };
+  back.addEventListener('keydown',keys);
+  $('dashClose').onclick=dismiss;
+  $('dashApply').onclick=()=>{ dismiss(); ui.poFilter=poFilter; ui.statusFilter=statusFilter; renderFilters(); if($('itemsTable').scrollIntoView) $('itemsTable').scrollIntoView({block:'start'}); $('itemsTable').focus(); };
+  $('dashClose').focus();
+}
+$('poTiles').addEventListener('click', e=>{ const t=e.target.closest('[data-po]'); if(!t) return; const id=t.dataset.po, rows=id==='__unassigned__'?ev.rows.filter(r=>!r.poId):ev.rows.filter(r=>r.poId===id); const p=poById(id); dashboardPopup(p?'PO '+p.ref:'Unassigned',rows,id==='__unassigned__'?[]:ev.missing.filter(m=>m.poId===id),id,null,t); });
+$('dashGrid').addEventListener('click', e=>{ const t=e.target.closest('[data-f]'); if(!t) return; const f=t.dataset.f; dashboardPopup(f==='__all__'?'Total checked in':filterLabel(f),f==='MISSING'?[]:statusRows(rowsInScope(),f),f==='MISSING'?missingInScope():null,ui.poFilter,f==='__all__'?null:f,t); });
 function renderPoIssues(){
   const all=[...ev.poIssues.map(x=>'⚠ '+x), ...(ev.poInfo||[]).map(x=>'ℹ '+x)];
   if(all.length){ $('poIssueBanner').classList.add('show'); $('poIssueList').innerHTML=all.slice(0,300).map(x=>'<li>'+esc(x)+'</li>').join(''); }
@@ -1596,18 +1681,18 @@ function renderPoOptions(){
   const names=new Set(); state.pos.forEach(p=>p.lines.forEach(l=>names.add(l.item)));
   $('poNames').innerHTML=[...names].map(n=>`<option value="${esc(n)}">`).join('');
 }
-$('poFilter').addEventListener('change', e=>{ ui.poFilter=e.target.value; renderAll(); });
+$('poFilter').addEventListener('change', e=>{ ui.poFilter=e.target.value; renderFilters(); });
 
 // ---------- check-in ----------
-const QA=['qaItem','qaPhysBC','qaPhysQty','qaPhysUom','qaPhysPieces','qaPhysSpec','qaExpiry','qaNotes'];
+const QA=['qaItem','qaPhysBC','qaPhysQty','qaDamagedQty','qaPhysUom','qaPhysPieces','qaPhysSpec','qaExpiry','qaNotes'];
 $('qaPo').addEventListener('change', e=>{ state.activePoId=e.target.value||null; save(); updateQaPreview(); });
 function updateQaPreview(sourceId){
   const itemField=$('qaItem'), item=itemField.value.trim(), physBC=$('qaPhysBC').value.trim(), badge=$('qaStatusBadge');
   if(sourceId==='qaItem') itemField.dataset.auto='0';
   const clear=()=>{ ['qaPoRef','qaPoBC','qaPoQty','qaPoUom'].forEach(id=>$(id).value=''); };
   if((!item && !physBC) || !state.pos.length){ badge.textContent='—'; badge.className='badge'; clear(); return; }
-  const tmp={pos:state.pos, items:[{no:0, item, physicalBC:physBC, physicalQty:$('qaPhysQty').value===''?null:Number($('qaPhysQty').value), physicalUom:$('qaPhysUom').value.trim()||null, poId:$('qaPo').value||null, poSource:$('qaPo').value?'selected':null, decisions:{}}]};
-  const r=E.evaluate(tmp, uomDefs).rows[0];
+  const tmp={no:0, item, physicalBC:physBC, physicalQty:$('qaPhysQty').value===''?null:Number($('qaPhysQty').value), physicalUom:$('qaPhysUom').value.trim()||null, poId:$('qaPo').value||null, poSource:$('qaPo').value?'selected':null, decisions:{}};
+  const r=E.previewItem(tmp, uomDefs, ev.catalog);
   const l=r.line || r.match.line || (r.poCandidates[0]&&r.poCandidates[0].target) || null;
   if(r.line){ badge.textContent='PO '+(r.poRef||'')+' — '+r.match.via+(r.it.physicalQty!==null&&r.it.physicalQty!==undefined?' — '+r.statusLabel:''); badge.className='badge ok'; }
   else { badge.textContent=r.statusLabel+(r.poRef?' — PO '+r.poRef:'')+' — '+(r.reasons[0]||r.match.via); badge.className='badge '+(r.status==='EXTRA'?'bad':'warn'); }
@@ -1626,9 +1711,14 @@ $('cancelEditBtn').addEventListener('click', resetQa);
 $('addItemBtn').addEventListener('click', ()=>{
   const item=$('qaItem').value.trim();
   if(!item){ alert('Enter a product name.'); return; }
+  const damage=$('qaDamagedQty').value===''?0:Number($('qaDamagedQty').value);
+  const physical=$('qaPhysQty').value===''?null:Number($('qaPhysQty').value);
+  if(!Number.isFinite(damage) || damage<0 || (damage>0 && (!Number.isFinite(physical) || physical<damage))){
+    alert('Damaged quantity must be non-negative and no greater than the physical quantity.'); $('qaDamagedQty').focus(); return;
+  }
   const v=id=>$(id).value.trim()||null;
   const poId=$('qaPo').value||null;
-  const rec={ item, physicalBC:v('qaPhysBC'), physicalQty:$('qaPhysQty').value!==''?Number($('qaPhysQty').value):null,
+  const rec={ item, physicalBC:v('qaPhysBC'), physicalQty:physical, damagedQty:damage,
     physicalUom:v('qaPhysUom'), physicalPieces:$('qaPhysPieces').value!==''?Number($('qaPhysPieces').value):null, physicalSpec:v('qaPhysSpec'),
     expiry:v('qaExpiry'), notes:v('qaNotes'), poId, poSource:poId?'selected':null, poRefText:null,
     manualTargetId:null, manualNotOnPo:false, tempPhysPieces:null, tempPoPieces:null, orphaned:false, decisions:{} };
@@ -1640,6 +1730,7 @@ function startEdit(no){
   const it=state.items.find(x=>x.no===no); if(!it) return;
   ui.editingNo=no;
   $('qaItem').value=it.item||''; $('qaPhysBC').value=it.physicalBC??''; $('qaPhysQty').value=it.physicalQty??''; $('qaPhysUom').value=it.physicalUom??'';
+  $('qaDamagedQty').value=it.damagedQty??'';
   $('qaPhysPieces').value=it.physicalPieces??''; $('qaPhysSpec').value=it.physicalSpec??''; $('qaExpiry').value=it.expiry??''; $('qaNotes').value=it.notes??'';
   $('qaPo').value=it.poId&&poById(it.poId)?it.poId:'';
   $('qaItem').dataset.auto='0'; $('editNo').textContent='#'+no; $('editBanner').classList.add('show'); $('addItemBtn').textContent='Save changes';
@@ -1688,33 +1779,31 @@ function decisionHtml(r){
     h+=`<div class="dec"><label>${esc(d.label)}${d.required&&d.value===null?' ⚠':''}</label><select data-no="${r.no}" data-key="${d.key}">
       <option value="">— choose —</option>${opts.map(o=>`<option value="${esc(o.v)}" ${o.v===cur?'selected':''}>${esc(o.label)}</option>`).join('')}</select></div>`;
   }
-  const it=state.items.find(x=>x.no===r.no)||{};
+  const it=r.it;
   if(it.manualTargetId || it.manualNotOnPo) h+=`<div class="dec"><button class="row-btn edit" data-no="${r.no}" data-act="unmatch">↺ undo manual match</button></div>`;
   if(it.poSource==='user-choice') h+=`<div class="dec"><button class="row-btn edit" data-no="${r.no}" data-act="unpo">↺ undo PO choice</button></div>`;
   const cls = r.review.startsWith('ON HOLD')?'bad':(r.review.startsWith('PENDING')||r.review==='NOT UPLOADABLE'?'warn':'ok');
   return `<span class="badge ${cls}">${esc(r.review)}</span>`+(r.uploadEligible?' <span class="badge ok">IN UPLOAD</span>':'')+h;
 }
-function filterLabel(f){ if(f==='__upload__') return 'In Odoo upload'; if(f==='__pending__') return 'Pending review / on hold'; if(f==='MISSING') return 'Missing'; return E.STATUS[f]?E.STATUS[f].label:f; }
+function filterLabel(f){ if(f==='__upload__') return 'In Odoo upload'; if(f==='__pending__') return 'Pending review / on hold'; if(f==='__damaged__') return 'Damaged items / invalid damage'; if(f==='MISSING') return 'Missing'; return E.STATUS[f]?E.STATUS[f].label:f; }
 function renderTable(){
   const tagWrap=$('filterTagWrap');
   tagWrap.innerHTML = ui.statusFilter ? `<span class="filter-tag">Filtered: ${esc(filterLabel(ui.statusFilter))} <button id="clearFilterBtn">✕</button></span>` : '';
-  if(ui.statusFilter) $('clearFilterBtn').addEventListener('click', ()=>{ ui.statusFilter=null; renderAll(); });
+  if(ui.statusFilter) $('clearFilterBtn').addEventListener('click', ()=>{ ui.statusFilter=null; renderFilters(); });
   const tbody=$('itemsTbody');
   if(ui.statusFilter==='MISSING'){
     const ms=missingInScope();
     $('itemCount').textContent=ev.rows.length+' ('+ms.length+' missing receiving targets shown)';
     tbody.innerHTML=ms.map(m=>`<tr><td>—</td><td>${esc(m.poRef||'')}</td><td>${esc(m.line.item)}${m.line.isGroup?`<div class="small">identical group: ${m.line.lines.map(l=>l.qty).join(' + ')}</div>`:''}</td><td class="small">—</td><td class="bc">${esc(E.normBC(m.line.barcode))}</td><td>—</td>
-      <td>${esc(m.line.uom)}</td><td>—</td><td class="num">${esc(m.line.qty)}</td><td class="num">0</td><td>—</td><td class="num">0</td><td>—</td>
+      <td>${esc(m.line.uom)}</td><td>—</td><td class="num">${esc(m.line.qty)}</td><td class="num">0</td><td>—</td><td>—</td><td class="num">0</td><td>—</td>
       <td><span class="badge bad">MISSING</span></td><td class="small">${esc(m.reason)}</td><td class="small">${esc(m.action)}</td><td>—</td><td></td></tr>`).join('');
     return;
   }
   let rows=rowsInScope();
-  if(ui.statusFilter==='__upload__') rows=rows.filter(r=>r.uploadEligible);
-  else if(ui.statusFilter==='__pending__') rows=rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA');
-  else if(ui.statusFilter) rows=rows.filter(r=>r.status===ui.statusFilter);
+  rows=statusRows(rows,ui.statusFilter);
   $('itemCount').textContent=ev.rows.length+((ui.statusFilter||ui.poFilter)?' ('+rows.length+' shown)':'');
   tbody.innerHTML=rows.slice().reverse().map(r=>{
-    const s=E.STATUS[r.status], c=r.conv, it=state.items.find(x=>x.no===r.no)||{};
+    const s=E.STATUS[r.status], c=r.conv, it=r.it;
     const undo = it.splitGroup && E.canUndoSplit(state,it.splitGroup).ok;
     return `<tr>
       <td>${r.no}${it.splitFrom?`<div class="small">split of #${it.splitFrom}</div>`:''}</td>
@@ -1727,6 +1816,7 @@ function renderTable(){
       <td>${esc(c.physUom||(r.line?'(same as PO)':''))}${c.physPieces?`<div class="small">${c.physPieces} pcs</div>`:''}</td>
       <td class="num">${esc(r.poQty??'')}${r.isGroup?`<div class="small">group: ${r.line.lines.map(l=>l.qty).join(' + ')}</div>`:''}${r.group&&r.group.rows.length>1?`<div class="small">received total ${r.group.known?r.group.total:'?'}</div>`:''}</td>
       <td class="num">${esc(r.it.physicalQty??'')}</td>
+      <td class="num">${r.damagedQty===null?'Invalid':esc(r.damagedQty)} / ${esc(r.usableQty??'—')}</td>
       <td class="num" title="${esc(c.explain||c.source||c.reason)}">${c.factor??'—'}${c.temporary?'<div class="small">temporary</div>':''}</td>
       <td class="num"><b>${r.odooQty??'—'}</b>${r.odooQty!==null&&r.poUom?`<div class="small">${esc(r.poUom)}</div>`:''}${c.physPcs!==null?`<div class="small">${c.physPcs} PCS</div>`:''}</td>
       <td>${esc(r.it.expiry||'')}</td>
@@ -1820,10 +1910,10 @@ $('clearSessionBtn').addEventListener('click', ()=>{
 });
 
 // ---------- export ----------
-function prepareOutputs(){
+function prepareOutputs(selection){
   if(!state.pos.length){ alert('Load at least one Purchase Order first.'); return null; }
   ev=E.evaluate(state, uomDefs);
-  const out=E.buildAllOutputs(XLSX, state, ev);
+  const out=E.buildAllOutputs(XLSX, state, ev, selection);
   const pending=ev.rows.filter(r=>!r.uploadEligible && r.status!=='EXTRA').length;
   const problems=[];
   const fails=out.cross.checks.filter(c=>c.result==='FAIL'); if(fails.length) problems.push('VALIDATION FAILURES:\n'+fails.map(c=>'- '+c.check+': '+c.detail).join('\n'));
@@ -1833,23 +1923,37 @@ function prepareOutputs(){
   return out;
 }
 function exportStatus(out, what){
-  $('exportStatus').textContent='Exported '+what+': '+out.files.filter(f=>f.kind==='po').length+' PO workbook(s) available; cross-PO validation: '+(out.cross.errors?out.cross.errors+' FAIL':'PASS')+(out.cross.warnings?' ('+out.cross.warnings+' warning(s))':'')+'.';
+  $('exportStatus').textContent='Exported '+what+': '+state.pos.length+' PO workbook(s) available; cross-PO validation: '+(out.cross.errors?out.cross.errors+' FAIL':'PASS')+(out.cross.warnings?' ('+out.cross.warnings+' warning(s))':'')+'.';
 }
 $('exportZipBtn').addEventListener('click', ()=>{
   const out=prepareOutputs(); if(!out) return;
   if(typeof JSZip==='undefined'){ alert('The ZIP library could not be loaded (offline?). Use the individual workbook buttons instead.'); return; }
   E.buildZip(JSZip, XLSX, out).generateAsync({type:'blob'}).then(blob=>{ download(blob, E.sanitizeFileName(state.shipmentName||'shipment')+'_reconciliation_workbooks.zip'); exportStatus(out,'ZIP ('+out.files.length+' files)'); });
 });
-$('exportMasterBtn').addEventListener('click', ()=>{ const out=prepareOutputs(); if(!out) return; const f=out.files.find(x=>x.kind==='master'); XLSX.writeFile(f.wb, f.name); exportStatus(out,'master workbook'); });
+$('exportMasterBtn').addEventListener('click', ()=>{ const out=prepareOutputs({kind:'master'}); if(!out) return; const f=out.files.find(x=>x.kind==='master'); XLSX.writeFile(f.wb, f.name); exportStatus(out,'master workbook'); });
 function renderExportBtns(){ $('poExportBtns').innerHTML=state.pos.map(p=>`<button class="secondary" data-exportpo="${p.poId}">Workbook — PO ${esc(p.ref)}</button>`).join(''); }
 $('poExportBtns').addEventListener('click', e=>{
   const b=e.target.closest('button[data-exportpo]'); if(!b) return;
-  const out=prepareOutputs(); if(!out) return; const f=out.files.find(x=>x.poId===b.dataset.exportpo); if(!f) return;
+  const out=prepareOutputs({kind:'po',poId:b.dataset.exportpo}); if(!out) return; const f=out.files.find(x=>x.poId===b.dataset.exportpo); if(!f) return;
   XLSX.writeFile(f.wb, f.name); exportStatus(out,'PO '+f.ref);
 });
 
 // ---------- render ----------
-function renderAll(){ ev=E.evaluate(state, uomDefs); renderPoOptions(); renderPoTable(); renderUom(); renderDashboard(); renderTable(); renderPoIssues(); renderExportBtns(); }
+function renderDamage(){
+  const rows=ev.rows.filter(r=>r.damagedQty===null || r.damagedQty>0);
+  $('damageCount').textContent=rows.length;
+  $('damageTbody').innerHTML=rows.length?rows.map(r=>`<tr>
+    <td>${r.no}</td><td>${esc(r.poRef||'Unassigned')}</td><td>${esc(r.it.item)}</td>
+    <td>${esc(r.it.physicalUom||r.poUom||'Not specified')}</td><td class="num">${esc(r.it.physicalQty??'—')}</td>
+    <td class="num">${r.damagedQty===null?'Invalid: '+esc(r.it.damagedQty??'—'):esc(r.damagedQty)}</td>
+    <td class="num">${esc(r.usableQty??'—')}</td><td>${esc(r.review)}</td>
+    <td><button class="row-btn edit" data-damage-edit="${r.no}">edit</button></td></tr>`).join('')
+    : '<tr><td colspan="9" class="small">No damaged items recorded.</td></tr>';
+}
+$('damageTbody').addEventListener('click', e=>{ const b=e.target.closest('button[data-damage-edit]'); if(b) startEdit(Number(b.dataset.damageEdit)); });
+let poSummaries=new Map();
+function renderFilters(){ renderPoOptions(); renderDashboard(); renderTable(); }
+function renderAll(){ ev=E.evaluate(state, uomDefs); poSummaries=new Map(state.pos.map(p=>[p.poId,E.poSummary(ev,p)])); renderPoOptions(); renderPoTable(); renderUom(); renderDashboard(); renderTable(); renderPoIssues(); renderExportBtns(); renderDamage(); }
 
 load();
 renderAll();
